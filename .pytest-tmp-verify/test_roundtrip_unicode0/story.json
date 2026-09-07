@@ -1,0 +1,42 @@
+{
+  "topic": "Why does ice float on water?",
+  "language": "Hinglish",
+  "duration": 30,
+  "scenes": [
+    {
+      "duration": 4.0,
+      "action": "show_glass_water_ice",
+      "camera": "wide",
+      "narration": "Ice पानी पर क्यों float करती है? इसका reason है density.",
+      "caption": "Why Does Ice Float?"
+    },
+    {
+      "duration": 6.0,
+      "action": "zoom_into_ice",
+      "camera": "close",
+      "narration": "जब water freeze होता है, उसके molecules open structure बनाते हैं.",
+      "caption": "Freezing Creates Open Space"
+    },
+    {
+      "duration": 10.0,
+      "action": "show_water_molecules",
+      "camera": "macro",
+      "narration": "इस open structure में molecules के बीच ज्यादा space होता है. इसलिए same mass की ice ज्यादा volume लेती है.",
+      "caption": "Same Mass, More Volume"
+    },
+    {
+      "duration": 6.0,
+      "action": "compare_density",
+      "camera": "medium",
+      "narration": "Density मतलब mass divided by volume. Ice की density water से कम होती है.",
+      "caption": "Lower Density Floats"
+    },
+    {
+      "duration": 4.0,
+      "action": "return_to_glass",
+      "camera": "wide",
+      "narration": "इसीलिए ice float करती है, और उसका बड़ा हिस्सा water के नीचे रहता है.",
+      "caption": "Most Ice Stays Underwater"
+    }
+  ]
+}

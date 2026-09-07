@@ -1,0 +1,19 @@
+﻿1
+00:00:00,000 --> 00:00:04,000
+Why Does Ice Float?
+
+2
+00:00:04,000 --> 00:00:10,000
+Freezing Creates Open Space
+
+3
+00:00:10,000 --> 00:00:20,000
+Same Mass, More Volume
+
+4
+00:00:20,000 --> 00:00:26,000
+Lower Density Floats
+
+5
+00:00:26,000 --> 00:00:30,000
+Most Ice Stays Underwater

@@ -1,0 +1,13 @@
+.venv/
+.tools/
+.env
+__pycache__/
+.pytest_cache/
+*.egg-info/
+videos/
+voice_tracks/
+*.sqlite3*
+.secrets/
+publishing/
+client_secret*.json
+youtube-token*.json

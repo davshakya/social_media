@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "video": "D:\\social_media\\.pytest-tmp-verify\\test_prepare_encodes_real_plat0\\packages\\post-ba154eda8853\\video.mp4",
+  "sha256": "5ae2d9d0efcd9b5664acf26ff7b8d372754af980090ade37a3cba89b0eba1265",
+  "source": "D:\\social_media\\.pytest-tmp-verify\\test_prepare_encodes_real_plat0\\source.mp4",
+  "metadata": {
+    "title": "Science",
+    "description": "Hindi science video",
+    "tags": [
+      "Science"
+    ],
+    "youtube_visibility": "private",
+    "made_for_kids": false
+  },
+  "accounts": {
+    "brand": "TechGyaan",
+    "youtube_handle": "TechGyaan_India",
+    "youtube_url": "https://www.youtube.com/@TechGyaan_India",
+    "instagram_username": "techgyaan_india",
+    "instagram_url": "https://www.instagram.com/techgyaan_india/",
+    "facebook_page_id": "61593902113213",
+    "facebook_url": "https://www.facebook.com/people/TechGyaan/61593902113213/"
+  },
+  "media": {
+    "ffmpeg_version": "7.1-essentials_build-www.gyan.dev built with gcc 14.2.0 (Rev1, Built by MSYS2 project)",
+    "codec": "h264",
+    "pix_fmt": "yuv420p(progressive)",
+    "audio_codec": "aac",
+    "fps": 30.0,
+    "source_size": [
+      1080,
+      1920
+    ],
+    "size": [
+      1080,
+      1920
+    ],
+    "rotate": 0,
+    "duration": 3.1
+  }
+}
