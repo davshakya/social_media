@@ -184,7 +184,7 @@ def glass_scene(mats, start, end, oil=False):
 def build_scene(spec, settings):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
+    scene.render.engine = "BLENDER_EEVEE_NEXT" if settings.get("fast", False) else "CYCLES"
     scene.view_settings.view_transform = "AgX"
     scene.cycles.samples = 12 if settings["preview"] else 16
     scene.cycles.use_adaptive_sampling = True
@@ -231,11 +231,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--job", type=Path, required=True)
     parser.add_argument("--still", action="store_true")
+    parser.add_argument("--scene-index", type=int)
     args = parser.parse_args(sys.argv[sys.argv.index("--")+1:])
     job = json.loads(args.job.read_text(encoding="utf-8"))
     folder = args.job.parent
     (folder / "frames").mkdir(exist_ok=True)
-    for i, spec in enumerate(job["timeline"]):
+    scene_indices = range(len(job["timeline"])) if args.scene_index is None else [args.scene_index]
+    for i in scene_indices:
+        spec = job["timeline"][i]
         scene = build_scene(spec, job)
         scene.render.filepath = str(folder / "frames" / "frame_")
         bpy.ops.wm.save_as_mainfile(filepath=str(folder / f"scene-{i+1:02d}.blend"))

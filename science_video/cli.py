@@ -13,8 +13,11 @@ from .storyboard import Storyboard, demo_storyboard, plan
 def render_options(parser):
     parser.add_argument("--output", type=Path, default=ROOT / "videos")
     parser.add_argument("--preview", action="store_true", help="270×480 at 5 fps for a quick complete preview")
-    parser.add_argument("--resolution", choices=("720", "1080"), default="1080",
-                        help="Vertical production width; 720 renders 720×1280")
+    parser.add_argument("--fast", action="store_true", help="Use Blender Eevee for faster rendering")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Number of Blender scenes to render concurrently; default: 1")
+    parser.add_argument("--resolution", choices=("480", "720", "1080"), default="1080",
+                        help="Vertical production width; 480 renders 480×853")
     voice = parser.add_mutually_exclusive_group()
     voice.add_argument("--silent", action="store_true", help="Explicitly render without speech (labeled preview)")
     voice.add_argument("--voice-dir", type=Path, help="Recorded narration: 01.wav, 02.wav, ... one per scene")
@@ -101,7 +104,7 @@ def main(argv=None):
             story = Storyboard.read(args.storyboard) if args.storyboard else plan(args.topic)
             print(generate(story, args.output, preview=args.preview, silent=args.silent,
                            voice_dir=args.voice_dir, music=args.music, still=args.still,
-                           resolution=int(args.resolution)))
+                           resolution=int(args.resolution), fast=args.fast, workers=args.workers))
         elif args.command == "queue":
             from .queue import TopicQueue
             queue = TopicQueue(args.db)
@@ -126,7 +129,8 @@ def main(argv=None):
                             break
                         try:
                             video = generate(plan(row["topic"]), args.output, preview=args.preview,
-                                             silent=args.silent, voice_dir=args.voice_dir, music=args.music)
+                                             silent=args.silent, voice_dir=args.voice_dir, music=args.music,
+                                             fast=args.fast, workers=args.workers)
                             queue.finish(row["id"], output=video)
                             print(video)
                         except BaseException as exc:

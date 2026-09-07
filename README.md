@@ -6,7 +6,7 @@ For TechGyaan YouTube, Instagram and Facebook uploads, see [PUBLISHING.md](PUBLI
 
 Production narration is Hinglish: natural Hindi in Devanagari with clear English science terms. Every visible caption, subtitle and 3D label is English-only. Production output uses 16-sample Cycles rendering with adaptive denoising, 30 fps H.264 at CRF 18 and 48 kHz AAC. Use preview mode only for quick review; production rendering defaults to 1080 x 1920.
 
-Turn a supported science topic into a Hindi storyboard, Blender animation, narration, captions, music and a **30-second vertical MP4**. Production defaults to 1080 × 1920; use `--resolution 720` for 720 × 1280 HD. The first version includes floating ice, camera movement, schematic water molecules, a density comparison, and separated oil/water.
+Turn a supported science topic into a Hindi storyboard, Blender animation, narration, captions, music and a **30-second vertical MP4**. Production defaults to 1080 × 1920; use `--resolution 480` for 480 × 853, or `--resolution 720` for 720 × 1280 HD. The first version includes floating ice, camera movement, schematic water molecules, a density comparison, and separated oil/water.
 
 ## Windows quick start
 
@@ -32,13 +32,21 @@ The default Windows font is **Nirmala UI**. On Linux/macOS install Noto Sans Dev
 .\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples/ice_float.json --preview --silent
 ```
 
-This produces a **270 × 480, 5 fps, 30-second preview** with English-only captions and generated background audio. It is visibly labeled `SILENT PREVIEW`; it does not contain narration. Remove `--preview` for production at 30 fps. Production defaults to 1080 × 1920; add `--resolution 720` for 720 × 1280 HD. Full rendering is substantially slower on CPU. `--still` renders one diagnostic image per scene instead of an MP4.
+This produces a **270 × 480, 5 fps, 30-second preview** with English-only captions and generated background audio. It is visibly labeled `SILENT PREVIEW`; it does not contain narration. Remove `--preview` for production at 30 fps. Production defaults to 1080 × 1920; use `--resolution 480` for 480 × 853 or `--resolution 720` for 720 × 1280 HD. Full rendering is substantially slower on CPU. `--still` renders one diagnostic image per scene instead of an MP4.
 
-For recorded narration, render the included voice tracks at 720p with:
+For recorded narration, render the included voice tracks at 480p with:
 
 ```powershell
-.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\ice_float.json --voice-dir voice_tracks\ice_float --resolution 720
+.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\ice_float.json --voice-dir voice_tracks\ice_float --resolution 480
 ```
+
+For a faster 480p render, use Blender Eevee and render independent scenes concurrently:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\ice_float.json --voice-dir voice_tracks\ice_float --resolution 480 --fast --workers 2
+```
+
+`--fast` uses Eevee instead of the default Cycles renderer. `--workers 2` runs two Blender processes at the same time; try `--workers 4` only if the computer has enough CPU cores and memory. Higher worker counts do not always improve speed. Omit both options for the highest-quality default Cycles render.
 
 Each job writes `blender.log` and `ffmpeg.log` in its job folder. Watch Blender while it renders with `Get-Content .\videos\<job-id>\blender.log -Wait`. The job is ready when `manifest.json` reports `"status": "complete"` and `final.mp4` exists.
 

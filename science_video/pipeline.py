@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -64,7 +65,7 @@ def compose(folder, ffmpeg, fps, *, music=None, font_dir=None):
 
 
 def generate(story, output=Path("videos"), *, preview=False, silent=False, voice_dir=None,
-             music=None, still=False, resolution=1080):
+             music=None, still=False, resolution=1080, fast=False, workers=1):
     ffmpeg, blender, font_dir = preflight()
     if music and not Path(music).is_file():
         raise ValueError(f"Music file not found: {music}")
@@ -79,23 +80,48 @@ def generate(story, output=Path("videos"), *, preview=False, silent=False, voice
     try:
         if preview:
             fps, width, height = 5, 270, 480
-        elif resolution in (720, 1080):
+        elif resolution in (480, 720, 1080):
             fps, width, height = 30, resolution, resolution * 16 // 9
         else:
-            raise ValueError("Production resolution must be 720 or 1080")
+            raise ValueError("Production resolution must be 480, 720, or 1080")
+        if workers < 1:
+            raise ValueError("--workers must be at least 1")
         print("Preparing narration and measuring scene timing...", flush=True)
         timeline = narration(story, folder, ffmpeg, silent=silent, voice_dir=voice_dir, fps=fps)
-        job = {"width": width, "height": height, "fps": fps, "preview": preview, "timeline": timeline}
+        job = {"width": width, "height": height, "fps": fps, "preview": preview, "fast": fast,
+               "timeline": timeline}
         (folder / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
         write_captions(folder, timeline, os.getenv("CAPTION_FONT", "Nirmala UI"), silent=silent,
                        recorded=voice_dir is not None)
         soundtrack(folder, timeline)
-        print(f"Rendering Blender scenes ({width}×{height}, {fps} fps). See blender.log for progress...", flush=True)
-        cmd = [blender, "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
+        print(f"Rendering Blender scenes ({width}×{height}, {fps} fps). Blender output follows:", flush=True)
+        render_threads = max(1, (os.cpu_count() or 1) // workers)
+        cmd = [blender, "--background", "--factory-startup", "--disable-autoexec", "--threads",
+               str(render_threads), "--python-exit-code", "1",
                "--python", Path(__file__).with_name("blender_engine.py"), "--", "--job", folder / "job.json"]
         if still:
             cmd.append("--still")
-        run(cmd, log=folder / "blender.log")
+        if workers == 1:
+            run(cmd, log=folder / "blender.log", live=True)
+        else:
+            def render_scene(index):
+                scene_log = folder / f"blender-{index + 1:02d}.log"
+                run(cmd + ["--scene-index", str(index)], log=scene_log, live=True)
+
+            errors = []
+            with ThreadPoolExecutor(max_workers=min(workers, len(timeline))) as pool:
+                futures = [pool.submit(render_scene, index) for index in range(len(timeline))]
+                for future in futures:
+                    try:
+                        future.result()
+                    except BaseException as exc:
+                        errors.append(exc)
+            (folder / "blender.log").write_text(
+                "".join((folder / f"blender-{index + 1:02d}.log").read_text(encoding="utf-8", errors="replace")
+                        for index in range(len(timeline))),
+                encoding="utf-8")
+            if errors:
+                raise RuntimeError(f"Blender scene rendering failed; see {folder / 'blender.log'}") from errors[0]
         render_log = (folder / "blender.log").read_text(encoding="utf-8", errors="replace")
         if any(line.startswith("Error:") for line in render_log.splitlines()):
             raise RuntimeError(f"Blender reported render errors; see {folder / 'blender.log'}")
