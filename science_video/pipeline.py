@@ -63,7 +63,8 @@ def compose(folder, ffmpeg, fps, *, music=None, font_dir=None):
         log=folder / "ffmpeg.log")
 
 
-def generate(story, output=Path("videos"), *, preview=False, silent=False, voice_dir=None, music=None, still=False):
+def generate(story, output=Path("videos"), *, preview=False, silent=False, voice_dir=None,
+             music=None, still=False, resolution=1080):
     ffmpeg, blender, font_dir = preflight()
     if music and not Path(music).is_file():
         raise ValueError(f"Music file not found: {music}")
@@ -76,7 +77,12 @@ def generate(story, output=Path("videos"), *, preview=False, silent=False, voice
     save()
     print(f"Job: {folder}", flush=True)
     try:
-        fps, width, height = (5, 270, 480) if preview else (30, 1080, 1920)
+        if preview:
+            fps, width, height = 5, 270, 480
+        elif resolution in (720, 1080):
+            fps, width, height = 30, resolution, resolution * 16 // 9
+        else:
+            raise ValueError("Production resolution must be 720 or 1080")
         print("Preparing narration and measuring scene timing...", flush=True)
         timeline = narration(story, folder, ffmpeg, silent=silent, voice_dir=voice_dir, fps=fps)
         job = {"width": width, "height": height, "fps": fps, "preview": preview, "timeline": timeline}

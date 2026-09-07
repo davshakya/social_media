@@ -4,9 +4,9 @@ For TechGyaan YouTube, Instagram and Facebook uploads, see [PUBLISHING.md](PUBLI
 
 ## Voice and on-screen language
 
-Production narration is Hinglish: natural Hindi in Devanagari with clear English science terms. Every visible caption, subtitle and 3D label is English-only. Production output uses 64-sample Cycles rendering with adaptive denoising, 30 fps H.264 at CRF 18 and 48 kHz AAC. Use preview mode only for quick review; production rendering is 1080 x 1920.
+Production narration is Hinglish: natural Hindi in Devanagari with clear English science terms. Every visible caption, subtitle and 3D label is English-only. Production output uses 16-sample Cycles rendering with adaptive denoising, 30 fps H.264 at CRF 18 and 48 kHz AAC. Use preview mode only for quick review; production rendering defaults to 1080 x 1920.
 
-Turn a supported science topic into a Hindi storyboard, Blender animation, narration, captions, music and a **30-second, 1080 × 1920 MP4**. The first version includes floating ice, camera movement, schematic water molecules, a density comparison, and separated oil/water.
+Turn a supported science topic into a Hindi storyboard, Blender animation, narration, captions, music and a **30-second vertical MP4**. Production defaults to 1080 × 1920; use `--resolution 720` for 720 × 1280 HD. The first version includes floating ice, camera movement, schematic water molecules, a density comparison, and separated oil/water.
 
 ## Windows quick start
 
@@ -32,7 +32,15 @@ The default Windows font is **Nirmala UI**. On Linux/macOS install Noto Sans Dev
 .\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples/ice_float.json --preview --silent
 ```
 
-This produces a **270 × 480, 5 fps, 30-second preview** with English-only captions and generated background audio. It is visibly labeled `SILENT PREVIEW`; it does not contain narration. Remove `--preview` for 1080 × 1920 at 30 fps. Full rendering is substantially slower on CPU. `--still` renders one diagnostic image per scene instead of an MP4.
+This produces a **270 × 480, 5 fps, 30-second preview** with English-only captions and generated background audio. It is visibly labeled `SILENT PREVIEW`; it does not contain narration. Remove `--preview` for production at 30 fps. Production defaults to 1080 × 1920; add `--resolution 720` for 720 × 1280 HD. Full rendering is substantially slower on CPU. `--still` renders one diagnostic image per scene instead of an MP4.
+
+For recorded narration, render the included voice tracks at 720p with:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\ice_float.json --voice-dir voice_tracks\ice_float --resolution 720
+```
+
+Each job writes `blender.log` and `ffmpeg.log` in its job folder. Watch Blender while it renders with `Get-Content .\videos\<job-id>\blender.log -Wait`. The job is ready when `manifest.json` reports `"status": "complete"` and `final.mp4` exists.
 
 ### Hinglish narration and AI topic planning
 
@@ -158,14 +166,14 @@ Check one provider online:
 Publish a completed render. Start with YouTube `private` or `unlisted`; Instagram and Facebook uploads are sent when those platforms are selected.
 
 ```powershell
-.\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --visibility private
-.\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform all --visibility private
+.\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --title "Science video" --description "Hindi science short" --visibility private --made-for-kids no
+.\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform all --title "Science video" --description "Hindi science short" --visibility private --made-for-kids no
 ```
 
-Use `--platform youtube`, `instagram`, `facebook`, or `all`. Optional metadata flags are available:
+Use `--platform youtube`, `instagram`, `facebook`, or `all`. Title, description, and audience declaration are required. Publishing currently requires a completed 1080 × 1920 production video; 720 × 1280 output is not accepted by the upload validator:
 
 ```powershell
-.\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --title "बर्फ पानी पर क्यों तैरती है?" --description "Hindi science short" --visibility unlisted
+.\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --title "Ice floats on water" --description "Hindi science short" --visibility unlisted --made-for-kids no
 ```
 
 YouTube visibility applies to YouTube uploads. Receipts are written to `publishing\<job-id>\receipts.json`; this directory is ignored by Git. If a platform fails after another platform has succeeded, inspect the receipts and retry only the failed platform rather than publishing all platforms again.

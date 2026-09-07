@@ -13,6 +13,8 @@ from .storyboard import Storyboard, demo_storyboard, plan
 def render_options(parser):
     parser.add_argument("--output", type=Path, default=ROOT / "videos")
     parser.add_argument("--preview", action="store_true", help="270×480 at 5 fps for a quick complete preview")
+    parser.add_argument("--resolution", choices=("720", "1080"), default="1080",
+                        help="Vertical production width; 720 renders 720×1280")
     voice = parser.add_mutually_exclusive_group()
     voice.add_argument("--silent", action="store_true", help="Explicitly render without speech (labeled preview)")
     voice.add_argument("--voice-dir", type=Path, help="Recorded narration: 01.wav, 02.wav, ... one per scene")
@@ -98,7 +100,8 @@ def main(argv=None):
             from .pipeline import generate
             story = Storyboard.read(args.storyboard) if args.storyboard else plan(args.topic)
             print(generate(story, args.output, preview=args.preview, silent=args.silent,
-                           voice_dir=args.voice_dir, music=args.music, still=args.still))
+                           voice_dir=args.voice_dir, music=args.music, still=args.still,
+                           resolution=int(args.resolution)))
         elif args.command == "queue":
             from .queue import TopicQueue
             queue = TopicQueue(args.db)

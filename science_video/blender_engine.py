@@ -186,9 +186,9 @@ def build_scene(spec, settings):
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.view_settings.view_transform = "AgX"
-    scene.cycles.samples = 12 if settings["preview"] else 64
+    scene.cycles.samples = 12 if settings["preview"] else 16
     scene.cycles.use_adaptive_sampling = True
-    scene.cycles.adaptive_threshold = 0.05 if settings["preview"] else 0.015
+    scene.cycles.adaptive_threshold = 0.05 if settings["preview"] else 0.03
     scene.cycles.use_denoising = True
     scene.render.resolution_x = settings["width"]
     scene.render.resolution_y = settings["height"]
