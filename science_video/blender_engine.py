@@ -22,6 +22,28 @@ def material(name, color, metallic=0, roughness=0.3, transmission=0):
     return mat
 
 
+def topic_image_background(path, start, end):
+    image = bpy.data.images.load(str(path), check_existing=True)
+    mat = bpy.data.materials.new("Topic image background")
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    output = nodes.new("ShaderNodeOutputMaterial")
+    shader = nodes.new("ShaderNodeBsdfPrincipled")
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    shader.inputs["Roughness"].default_value = 1
+    links.new(texture.outputs["Color"], shader.inputs["Base Color"])
+    links.new(shader.outputs["BSDF"], output.inputs["Surface"])
+    bpy.ops.mesh.primitive_plane_add(size=2, location=(0, 1.4, 1.5), rotation=(math.pi / 2, 0, 0))
+    plane = finish(bpy.context.object, "Animated topic image", mat)
+    plane.scale = (2.2, 3.8, 1)
+    plane.keyframe_insert(data_path="scale", frame=start)
+    plane.scale = (2.28, 3.94, 1)
+    plane.keyframe_insert(data_path="scale", frame=end)
+
+
 def finish(obj, name, mat):
     obj.name = name
     obj.data.materials.append(mat)
@@ -168,6 +190,90 @@ def density(mats, start, end):
     label("Approx. near freezing", (0,-0.2,-0.6), 0.15, mats["text"])
 
 
+def tech_label(text, location, mats, size=0.2):
+    label(text, (location[0], -0.25, location[1]), size, mats["text"])
+
+
+def code_scene(mats, start, end):
+    tech_label("PYTHON", (0, 2.8), mats, 0.3)
+    lines = [("data = [2, 4, 6]", -1.0), ("for value in data:", 0.0), ("    print(value)", 1.0)]
+    for text, y in lines:
+        tech_label(text, (-0.1, y), mats, 0.22)
+    cursor = cylinder("Execution cursor", (-2.25, 0, 0.07), 0.08, 0.08, mats["ice"])
+    cursor.scale.x = 0.2
+    cursor.keyframe_insert(data_path="scale", frame=start)
+    cursor.scale.x = 2.0
+    cursor.keyframe_insert(data_path="scale", frame=end)
+    tech_label("Input -> Loop -> Output", (0, -2.7), mats, 0.18)
+
+
+def chart_scene(mats, start, end):
+    tech_label("DATA PATTERN", (0, 2.9), mats, 0.3)
+    values = [0.8, 1.4, 2.1, 2.8, 3.5]
+    for index, height in enumerate(values):
+        x = (index - 2) * 0.75
+        bar = cylinder(f"Data bar {index + 1}", (x, 0, 0.05), 0.23, height, mats["water"])
+        bar.scale.z = 0.05
+        bar.location.z = height * 0.05 / 2
+        bar.keyframe_insert(data_path="scale", frame=start)
+        bar.keyframe_insert(data_path="location", frame=start)
+        bar.scale.z = 1
+        bar.location.z = height / 2
+        bar.keyframe_insert(data_path="scale", frame=end)
+        bar.keyframe_insert(data_path="location", frame=end)
+        tech_label(str(index + 1), (x, -1.2), mats, 0.16)
+    tech_label("Compare values, spot the trend", (0, -2.3), mats, 0.2)
+
+
+def beam(start, end, mat):
+    midpoint = (Vector(start) + Vector(end)) / 2
+    length = (Vector(end) - Vector(start)).length
+    bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=0.025, depth=length, location=midpoint)
+    obj = finish(bpy.context.object, "Neural connection", mat)
+    obj.rotation_euler = (Vector(end) - Vector(start)).to_track_quat("Z", "Y").to_euler()
+    return obj
+
+
+def neural_network(mats, start, end):
+    tech_label("NEURAL NETWORK", (0, 2.9), mats, 0.27)
+    layers = [(-1.7, [-1.0, 0, 1.0]), (0, [-1.4, -0.45, 0.45, 1.4]), (1.7, [-1.0, 0, 1.0])]
+    points = []
+    for x, heights in layers:
+        current = []
+        for y in heights:
+            current.append((x, 0, y + 1.0))
+            sphere("Neural node", (x, 0, y + 1.0), 0.16, mats["ice"])
+        points.append(current)
+    for left, right in zip(points, points[1:]):
+        for source in left:
+            for target in right:
+                beam(source, target, mats["hydrogen"])
+    tech_label("Input -> Learn -> Predict", (0, -1.9), mats, 0.2)
+    tech_label("Weights change during training", (0, -2.5), mats, 0.16)
+    for node in bpy.context.scene.objects:
+        if node.name.startswith("Neural node"):
+            node.scale = (0.4, 0.4, 0.4)
+            node.keyframe_insert(data_path="scale", frame=start)
+            node.scale = (1, 1, 1)
+            node.keyframe_insert(data_path="scale", frame=end)
+
+
+def algorithm_steps(mats, start, end):
+    tech_label("ALGORITHM", (0, 2.9), mats, 0.3)
+    steps = [("1. Input", -1.6), ("2. Process", 0), ("3. Output", 1.6)]
+    for index, (text, x) in enumerate(steps):
+        cube = bpy.ops.mesh.primitive_cube_add(size=0.9, location=(x, 0, 1.0))
+        box = finish(bpy.context.object, f"Algorithm step {index + 1}", mats["water"])
+        box.scale = (0.65, 0.2, 0.65)
+        box.keyframe_insert(data_path="scale", frame=start + index * max(1, (end-start)//4))
+        box.scale = (1, 1, 1)
+        box.keyframe_insert(data_path="scale", frame=start + index * max(1, (end-start)//4) + max(1, (end-start)//5))
+        tech_label(text, (x, -0.7), mats, 0.18)
+        if index < len(steps) - 1:
+            beam((x + 0.5, 0, 1.0), (steps[index + 1][1] - 0.5, 0, 1.0), mats["hydrogen"])
+    tech_label("Break a big problem into small steps", (0, -2.0), mats, 0.19)
+
+
 def glass_scene(mats, start, end, oil=False):
     create_glass(mats)
     create_water(mats)
@@ -212,15 +318,28 @@ def build_scene(spec, settings):
     }
     start, end = spec["start_frame"], spec["end_frame"]
     action = spec["action"]
+    topic_image = settings.get("topic_image")
+    if topic_image:
+        image_path = Path(settings.get("job_folder", "")) / topic_image
+        if image_path.is_file():
+            topic_image_background(image_path, start, end)
     if action == "show_water_molecules":
         molecules(mats, start, end)
     elif action == "compare_density":
         density(mats, start, end)
+    elif action == "show_code":
+        code_scene(mats, start, end)
+    elif action == "show_data_chart":
+        chart_scene(mats, start, end)
+    elif action == "show_neural_network":
+        neural_network(mats, start, end)
+    elif action == "show_algorithm_steps":
+        algorithm_steps(mats, start, end)
     elif action in {"show_glass_water_ice", "zoom_into_ice", "return_to_glass", "show_oil_water"}:
         glass_scene(mats, start, end, oil=action == "show_oil_water")
     else:
         raise ValueError(f"Unsupported action: {action}")
-    setup_camera(spec["camera"], start, end, action in {"show_water_molecules", "compare_density"})
+    setup_camera(spec["camera"], start, end, action in {"show_water_molecules", "compare_density", "show_code", "show_data_chart", "show_neural_network", "show_algorithm_steps"})
     setup_lighting()
     scene.frame_start, scene.frame_end = start, end
     scene.frame_set(start)

@@ -55,7 +55,7 @@ Review [examples/ice_float_post.json](examples/ice_float_post.json): Hindi title
 .\.venv\Scripts\python.exe science_video_generator.py publish prepare videos/YOUR-JOB/final.mp4 --metadata examples/ice_float_post.json
 ```
 
-Preparation does not upload anything. It rejects failed/preview jobs and makes a separate 1080×1920, 30 fps H.264/AAC MP4 with 48 kHz, 128 kbps audio. The original stays intact. `publishing/post-.../post.json` contains reviewable metadata, destinations and a video hash. The first workflow accepts 3–60 second vertical sources at least 1080×1920 and 23–60 fps. The generator also supports a 720×1280 HD render with `--resolution 720`, but the current publishing validator requires at least 1080×1920. `--allow-silent` permits completed production jobs without narration, but cannot bypass preview or resolution/frame-rate checks.
+Preparation does not upload anything. It rejects failed/preview jobs and makes a separate 1080×1920, 30 fps H.264/AAC MP4 with 48 kHz, 128 kbps audio. The original stays intact. `publishing/post-.../post.json` contains reviewable metadata, destinations and a video hash. The workflow accepts 3–180 second vertical sources at least 1080×1920 and 23–60 fps. The generator also supports lower-resolution renders, but the current publishing validator requires at least 1080×1920. `--allow-silent` permits completed production jobs without narration, but cannot bypass preview or resolution/frame-rate checks.
 
 ## Publish and track
 

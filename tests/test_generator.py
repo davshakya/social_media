@@ -9,6 +9,7 @@ from science_video.hinglish_voice import track_paths
 from science_video.queue import TopicQueue
 from science_video.runtime import executable, run
 from science_video.storyboard import Storyboard, demo_storyboard
+from science_video.topic_catalog import TOPICS, topic_for_day
 
 
 @pytest.mark.parametrize("change", [
@@ -54,6 +55,20 @@ def test_hinglish_voice_and_english_only_on_screen_text():
         assert any(char.isascii() and char.isalpha() for char in scene.narration)
         assert scene.caption.isascii()
         assert not any("\u0900" <= char <= "\u097f" for char in scene.caption)
+
+
+def test_educational_storyboard_metadata_and_topic_rotation():
+    data = demo_storyboard().model_dump()
+    data["hook"] = "Can Python loops save you time?"
+    data["cta"] = "Follow for one practical coding idea every day."
+    data["hashtags"] = ["Python", "CodingTips", "TechGyaan", "Shorts"]
+    data["scenes"][0]["action"] = "show_code"
+    data["scenes"][1]["action"] = "show_data_chart"
+    data["scenes"][2]["action"] = "show_neural_network"
+    data["scenes"][3]["action"] = "show_algorithm_steps"
+    story = Storyboard.model_validate(data)
+    assert story.hashtags == ["Python", "CodingTips", "TechGyaan", "Shorts"]
+    assert topic_for_day([TOPICS[0]], 0) == TOPICS[1]
 
 
 def test_hinglish_voice_track_names_match_voice_dir_contract(tmp_path):

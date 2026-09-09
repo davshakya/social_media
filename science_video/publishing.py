@@ -52,8 +52,8 @@ def check_media(info):
         raise ValueError("Publish a finished vertical video of at least 1080×1920. The 270p preview is not upload-ready.")
     if not 23 <= info.get("fps", 0) <= 60:
         raise ValueError("Publishing requires 23–60 fps; generate without --preview.")
-    if not 3 <= info.get("duration", 0) <= 60:
-        raise ValueError("This publishing workflow supports 3–60 second Shorts/Reels.")
+    if not 3 <= info.get("duration", 0) <= 180:
+        raise ValueError("This publishing workflow supports 3–180 second Shorts/Reels.")
     if not info.get("audio_codec"):
         raise ValueError("The video needs an audio track before publishing.")
 
@@ -160,7 +160,8 @@ def accounts():
     return json.loads(ACCOUNTS.read_text(encoding="utf-8"))
 
 
-def publish(video, platforms=PLATFORMS, *, title=None, description=None, visibility="private", made_for_kids=None, allow_silent=False):
+def publish(video, platforms=PLATFORMS, *, title=None, description=None, tags=None,
+            visibility="private", made_for_kids=None, allow_silent=False):
     """One-command compatibility wrapper around package preparation and tracked uploads."""
     if made_for_kids is None:
         raise ValueError("Specify whether this video is made for kids before publishing.")
@@ -168,13 +169,47 @@ def publish(video, platforms=PLATFORMS, *, title=None, description=None, visibil
         raise ValueError("Provide a title and description, or use publish prepare with a metadata file.")
     output = ROOT / "publishing"
     output.mkdir(exist_ok=True)
-    metadata = Metadata(title=title, description=description, tags=[],
+    metadata = Metadata(title=title, description=description, tags=tags or [],
                         youtube_visibility=visibility, made_for_kids=made_for_kids)
     meta_path = output / ("metadata-" + uuid4().hex + ".json")
     meta_path.write_text(metadata.model_dump_json(indent=2), encoding="utf-8")
     package = prepare(video, meta_path, output, allow_silent=allow_silent)
     print(f"Prepared package: {package}", flush=True)
     return send(package, platforms, output / "uploads.sqlite3")
+
+
+def publish_job(video, *, platform="youtube"):
+    """Publish generated job metadata and return the tracked upload report."""
+    video = Path(video).resolve()
+    metadata_path = video.parent / "social_metadata.json"
+    if not metadata_path.is_file():
+        raise ValueError(f"Generated job metadata not found: {metadata_path}")
+    metadata = Metadata.model_validate_json(metadata_path.read_text(encoding="utf-8-sig"))
+    report = publish(video, (platform,), title=metadata.title, description=metadata.description,
+                     tags=metadata.tags, visibility=metadata.youtube_visibility,
+                     made_for_kids=metadata.made_for_kids)
+    result = report.get(platform, {})
+    if "error" in result:
+        raise RuntimeError(f"{platform} upload failed: {result['error']}")
+    return report
+
+
+def prune_completed_jobs(output=ROOT / "videos", *, keep=2):
+    """Remove older completed job folders, preserving the newest completed jobs."""
+    jobs = []
+    for folder in Path(output).resolve().iterdir():
+        if not folder.is_dir() or not (folder / "final.mp4").is_file():
+            continue
+        manifest = folder / "manifest.json"
+        if manifest.is_file() and json.loads(manifest.read_text(encoding="utf-8")).get("status") != "complete":
+            continue
+        jobs.append(folder)
+    jobs.sort(key=lambda path: path.name, reverse=True)
+    removed = jobs[keep:]
+    for folder in removed:
+        import shutil
+        shutil.rmtree(folder)
+    return removed
 
 
 def selected(value):

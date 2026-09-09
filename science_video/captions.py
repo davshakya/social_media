@@ -18,6 +18,7 @@ def write_captions(folder, timeline, font="Nirmala UI", silent=False, recorded=F
     """Write only the approved English scene captions; never transcribe narration."""
     if any(char in font for char in ",\n\r"):
         raise ValueError("Caption font must be a font family name")
+    total_duration = (timeline[-1]["start"] + timeline[-1]["duration"]) if timeline else 0
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -33,7 +34,7 @@ Style: Brand,{font},29,&H00DFD1A3,&H00FFFFFF,&H0024190D,&H0024190D,0,0,0,0,100,1
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     label = "SILENT PREVIEW" if silent else ("RECORDED VOICE" if recorded else "AI VOICE")
-    events = [f"Dialogue: 0,0:00:00.00,0:00:30.00,Brand,,0,0,0,,SCIENCE IN 30 SEC - {label}"]
+    events = [f"Dialogue: 0,0:00:00.00,{stamp(total_duration, True)},Brand,,0,0,0,,SCIENCE IN {round(total_duration)} SEC - {label}"]
     srt = []
     for number, scene in enumerate(timeline, start=1):
         start = scene["start"]

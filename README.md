@@ -1,4 +1,4 @@
-# Hindi 3D Science Video Generator
+# Educational Technology Video Generator
 
 For TechGyaan YouTube, Instagram and Facebook uploads, see [PUBLISHING.md](PUBLISHING.md).
 
@@ -6,7 +6,7 @@ For TechGyaan YouTube, Instagram and Facebook uploads, see [PUBLISHING.md](PUBLI
 
 Production narration is Hinglish: natural Hindi in Devanagari with clear English science terms. Every visible caption, subtitle and 3D label is English-only. Production output uses 16-sample Cycles rendering with adaptive denoising, 30 fps H.264 at CRF 18 and 48 kHz AAC. Use preview mode only for quick review; production rendering defaults to 1080 x 1920.
 
-Turn a supported science topic into a Hindi storyboard, Blender animation, narration, captions, music and a **30-second vertical MP4**. Production defaults to 1080 × 1920; use `--resolution 480` for 480 × 853, or `--resolution 720` for 720 × 1280 HD. The first version includes floating ice, camera movement, schematic water molecules, a density comparison, and separated oil/water.
+Turn an educational technology topic into a Hinglish storyboard, Blender animation, narration, captions, music and a **2-minute vertical MP4**. The series covers Python, coding tips, data science, AI, machine learning, and related technology. Use `--duration 120` for 2 minutes, `--duration 150` for 2.5 minutes, or `--duration 180` for 3 minutes. Production defaults to 1080 × 1920; use `--resolution 320` for 320 × 568, `--resolution 480` for 480 × 853, or `--resolution 720` for 720 × 1280 HD. The animation library includes code flow, data charts, neural networks, algorithm steps, floating ice, molecules, density, and oil/water separation.
 
 ## Windows quick start
 
@@ -52,7 +52,58 @@ Each job writes `blender.log` and `ffmpeg.log` in its job folder. Watch Blender 
 
 ### Hinglish narration and AI topic planning
 
-Set `OPENAI_API_KEY` in `.env` (never commit it). Models and voice can be changed through `OPENAI_MODEL`, `OPENAI_TTS_MODEL`, and `OPENAI_TTS_VOICE`.
+#### Use multiple AI providers
+
+The planner and narrator are separate. You can use Gemini, OpenAI, OpenRouter, Groq, Together, or another compatible provider to create the storyboard, then use OpenAI TTS, Edge TTS, or recorded WAV files for narration.
+
+Each video can optionally include a topic-related AI background image. It uses the OpenAI Images API while the trusted Blender diagrams remain in front; the image receives a subtle animated zoom. Add these settings to `.env`:
+
+```env
+TOPIC_IMAGE_PROVIDER=openai
+TOPIC_IMAGE_API_KEY=your-openai-image-key
+TOPIC_IMAGE_MODEL=gpt-image-1
+```
+
+`TOPIC_IMAGE_API_KEY` falls back to `OPENAI_API_KEY`. If image generation fails, the video still renders with procedural visuals and the job manifest records the fallback. Disable it with `TOPIC_IMAGE_PROVIDER=none`. Image generation adds a separate API cost to each video.
+
+Never commit API keys. Add the provider settings to your local `.env` file. For Gemini:
+
+```env
+GEMINI_API_KEY=your-gemini-api-key
+AI_PLANNER_PROVIDER=gemini
+GEMINI_MODEL=gemini-3.5-flash
+GEMINI_FALLBACK_MODEL=gemini-flash-lite-latest
+```
+
+When both providers are configured, planning tries Gemini first. Credit, quota, rate-limit, timeout, and connectivity failures automatically retry with the fallback Gemini model and then OpenAI. A model that returns invalid storyboard content is reported for correction instead of silently switching providers.
+
+Generate and validate a Gemini storyboard:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py plan "Why does ice float on water?" --provider gemini --out examples\gemini_story.json
+.\.venv\Scripts\python.exe science_video_generator.py validate examples\gemini_story.json
+```
+
+Render it with OpenAI narration:
+
+```powershell
+# Put OPENAI_API_KEY in .env before running this command.
+.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\gemini_story.json --resolution 480 --fast --topic-image openai
+```
+
+On PowerShell, set `OPENAI_API_KEY` in `.env` instead of placing it on the command line. To use another narrator, use recorded audio or Edge TTS:
+
+```powershell
+# Recorded narration: one PCM WAV file per scene, named 01.wav, 02.wav, ...
+.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\gemini_story.json --voice-dir recordings --resolution 480
+
+# Generate narration without an OpenAI key
+.\.venv\Scripts\python.exe -m pip install -e ".[voice]"
+.\.venv\Scripts\python.exe scripts\generate_hinglish_voice.py examples\gemini_story.json --output voice_tracks\gemini_story
+.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\gemini_story.json --voice-dir voice_tracks\gemini_story --resolution 480
+```
+
+For OpenAI-compatible planners, set `AI_API_KEY`, `AI_PLANNER_PROVIDER`, and `AI_PLANNER_MODEL` in `.env`. Supported providers are `openai`, `openrouter`, `groq`, `together`, and `custom`. Set `AI_BASE_URL` for `custom`.
 
 ```powershell
 # Render the included script with Hinglish AI speech:
@@ -188,7 +239,7 @@ YouTube visibility applies to YouTube uploads. Receipts are written to `publishi
 
 ## Timing and outputs
 
-Each narration segment is synthesized and measured separately. Its share of the total speech duration determines its scene length. Cumulative frame rounding avoids drift; FFmpeg adjusts speech tempo to fill exactly 30 seconds without cutting off the last sentence. Extreme tempo changes (outside 0.67–1.5×) fail with guidance to revise the script.
+Each narration segment is synthesized and measured separately. Its share of the total speech duration determines its scene length. Cumulative frame rounding avoids drift; FFmpeg adjusts speech tempo to fill the requested 30, 120, 150, or 180 seconds without cutting off the last sentence. Extreme tempo changes (outside 0.67–1.5×) fail with guidance to revise the script.
 
 Captions are drawn from the supplied script. Phrase timings are interpolated within measured scene boundaries; they are **not forced-aligned word timestamps**. Devanagari shaping is handled by FFmpeg/libass, outside Blender's text engine.
 
@@ -207,9 +258,67 @@ Every invocation creates a unique directory under `videos/`:
 | `manifest.json`                  | Running, completed, or failed status          |
 | `blender.log`, `ffmpeg.log`    | Diagnostics                                   |
 
-Failed jobs retain artifacts. Retry by rerunning the command (a new job is created). There is no automatic render resume. Publishing is a separate explicit command and does not run automatically after generation or from the topic queue.
+Failed jobs retain artifacts. Retry by rerunning the command (a new job is created). There is no automatic render resume. Daily jobs can upload to YouTube automatically after a successful 1080p render; manual publishing remains available for other platforms.
 
 ## Topic queue and daily scheduling
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py queue schedule --days 7
+.\.venv\Scripts\python.exe science_video_generator.py queue list
+.\.venv\Scripts\python.exe science_video_generator.py queue daily --provider gemini --fast --resolution 1080 --duration 120
+```
+
+`queue daily` selects the next unused topic from the AI, machine learning, data science, Python, and coding series, asks the configured planner to create a validated 2-minute storyboard, renders one animated video, uploads it to YouTube, and keeps only the two newest completed jobs. It also writes `social_metadata.json` containing the hook, CTA, and hashtags. Automatic upload requires YouTube OAuth setup (`publish login-youtube`) and a production render of at least 1080 × 1920. Use `--duration 180` for 3-minute videos, `--no-upload` for local-only renders, or `--resolution 320` for a small 320 × 568 video. For Gemini planning with AI narration, configure both `GEMINI_API_KEY` and `OPENAI_API_KEY`; use `--silent` or `--voice-dir` if you do not want OpenAI TTS.
+
+To generate a 3-minute daily video manually:
+
+```powershell
+python science_video_generator.py queue daily --provider gemini --fast --resolution 1080 --duration 180
+```
+
+### Manual video generation
+
+If `--topic` is omitted, the command automatically selects a random topic from the curated Python, coding, data science, AI, and machine learning series.
+
+```powershell
+python science_video_generator.py generate `
+   --provider gemini `
+   --duration 120 `
+   --resolution 1080 `
+   --fast
+```
+
+Generate a 2-minute video directly from a new Gemini topic without using the queue:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+   --topic "What is machine learning?" `
+   --provider gemini `
+   --duration 120 `
+   --resolution 1080 `
+   --fast
+```
+
+Generate a 3-minute video:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+   --topic "How does Python automation save time?" `
+   --provider gemini `
+   --duration 180 `
+   --resolution 1080 `
+   --fast
+```
+
+To render an existing storyboard without uploading it to YouTube:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+   --storyboard examples\gemini_story.json `
+   --duration 120 `
+   --resolution 1080 `
+   --fast
+```
 
 ```powershell
 .\.venv\Scripts\python.exe science_video_generator.py queue add "Why does ice float on water?" --due 2026-09-07
@@ -217,19 +326,49 @@ Failed jobs retain artifacts. Retry by rerunning the command (a new job is creat
 .\.venv\Scripts\python.exe science_video_generator.py queue run --limit 1
 ```
 
-Use Windows Task Scheduler to run the following daily at 07:00 local time:
+Use Windows Task Scheduler to run the following daily at 21:00 (9:00 PM) local time:
 
-- Program: absolute path to `.venv\Scripts\python.exe`
-- Arguments: `"D:\social_media\science_video_generator.py" queue run --limit 1`
+- Program: `powershell.exe`
+- Arguments: `-NoProfile -ExecutionPolicy Bypass -File "D:\social_media\scripts\run_daily.ps1"`
 - Start in: `D:\social_media`
 
-No task is automatically registered. Increase `--limit` to generate a batch of due topics. SQLite claims are transactional so concurrent workers cannot take the same pending item. Failed items require `queue retry ID`. A killed worker can leave an item running; stop that worker before using `queue retry ID`. Queue planning requires an API key, even if rendering with `--silent`.
+Create the task directly from PowerShell:
+
+```powershell
+schtasks.exe /Create `
+   /TN "Social Media Daily Video" `
+   /TR 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\social_media\scripts\run_daily.ps1"' `
+   /SC DAILY /ST 21:00 /F
+```
+
+Test and inspect the task:
+
+```powershell
+Start-ScheduledTask -TaskName "Social Media Daily Video"
+Get-ScheduledTaskInfo -TaskName "Social Media Daily Video"
+```
+
+Remove it when needed:
+
+```powershell
+schtasks.exe /Delete /TN "Social Media Daily Video" /F
+```
+
+The script reads `.env`, uses `AI_PLANNER_PROVIDER` to choose the planner, uploads each successful production video to YouTube, and writes jobs under `videos\`. Complete YouTube login once before enabling the task:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py publish login-youtube
+```
+
+To run Gemini explicitly, set `AI_PLANNER_PROVIDER=gemini` and `GEMINI_API_KEY` in `.env` before enabling the task. Add `--no-upload` to `queue daily` when testing locally.
+
+No task is automatically registered. Use `queue schedule --days 7` to prefill a week, or run `queue daily` once per day. SQLite claims are transactional so concurrent workers cannot take the same pending item. Failed items require `queue retry ID`. A killed worker can leave an item running; stop that worker before using `queue retry ID`. Queue planning requires a configured planner API key, even if rendering with `--silent`.
 
 ## Extending the scene library
 
-`science_video/blender_engine.py` contains reusable procedural `create_glass`, `create_water`, `create_ice`, `create_molecule`, camera and lighting functions. They generate editable `.blend` scenes without requiring external asset downloads. The initial glass is an outlined scientific cutaway, and the molecule layout is a labeled schematic rather than an atomistic simulation.
+`science_video/blender_engine.py` contains reusable procedural scenes for code flow, data charts, neural networks, algorithm steps, glass cutaways, molecules, density, camera and lighting. They generate editable `.blend` scenes without requiring external asset downloads. The educational technology visuals are explanatory diagrams, not full software simulations.
 
-AI output is validated by `science_video/storyboard.py`; Blender dispatches only known action names. AI never supplies executable Python. Add a trusted action handler, extend the `Action` literal and planner capability prompt together, and include a validated example before enabling a new topic. Pressure cookers, fans, human anatomy, steam and other assets from the longer-term proposal are not implemented in this first version.
+AI output is validated by `science_video/storyboard.py`; Blender dispatches only known action names. AI never supplies executable Python. Add a trusted action handler, extend the `Action` literal and planner capability prompt together, and include a validated example before enabling a new topic. Arbitrary AI-generated Blender code is intentionally not supported.
 
 ## Verification
 

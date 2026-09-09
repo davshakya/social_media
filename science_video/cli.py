@@ -10,14 +10,19 @@ from .runtime import ROOT, executable, run
 from .storyboard import Storyboard, demo_storyboard, plan
 
 
-def render_options(parser):
+def render_options(parser, *, duration_default="30"):
     parser.add_argument("--output", type=Path, default=ROOT / "videos")
     parser.add_argument("--preview", action="store_true", help="270×480 at 5 fps for a quick complete preview")
     parser.add_argument("--fast", action="store_true", help="Use Blender Eevee for faster rendering")
     parser.add_argument("--workers", type=int, default=1,
                         help="Number of Blender scenes to render concurrently; default: 1")
-    parser.add_argument("--resolution", choices=("480", "720", "1080"), default="1080",
-                        help="Vertical production width; 480 renders 480×853")
+    parser.add_argument("--resolution", choices=("320", "480", "720", "1080"), default="1080",
+                        help="Vertical production width; 320 renders 320×568")
+    parser.add_argument("--duration", choices=("30", "120", "150", "180"), default=duration_default,
+                        help="Video duration in seconds; daily defaults to 120 (2 minutes)")
+    parser.add_argument("--topic-image", choices=("none", "openai"),
+                        help="Generate a topic-related background image; defaults to TOPIC_IMAGE_PROVIDER")
+    parser.add_argument("--topic-image-model", help="Image model; defaults to TOPIC_IMAGE_MODEL")
     voice = parser.add_mutually_exclusive_group()
     voice.add_argument("--silent", action="store_true", help="Explicitly render without speech (labeled preview)")
     voice.add_argument("--voice-dir", type=Path, help="Recorded narration: 01.wav, 02.wav, ... one per scene")
@@ -35,13 +40,21 @@ def parser():
     planner = sub.add_parser("plan", help="Generate a validated Hindi storyboard using AI")
     planner.add_argument("topic")
     planner.add_argument("--out", type=Path, required=True)
+    planner.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
+                         help="AI planner provider; defaults to AI_PLANNER_PROVIDER")
+    planner.add_argument("--model", help="Planner model; defaults to AI_PLANNER_MODEL or OPENAI_MODEL")
+    planner.add_argument("--duration", choices=("30", "120", "150", "180"), default="30",
+                         help="Storyboard duration in seconds")
     validate = sub.add_parser("validate")
     validate.add_argument("storyboard", type=Path)
     generate = sub.add_parser("generate", help="Render a storyboard or plan a supported topic and render")
-    source = generate.add_mutually_exclusive_group(required=True)
+    source = generate.add_mutually_exclusive_group()
     source.add_argument("--storyboard", type=Path)
     source.add_argument("--topic")
     generate.add_argument("--still", action="store_true", help="Render one diagnostic image per scene")
+    generate.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
+                          help="AI planner provider when --topic is used")
+    generate.add_argument("--model", help="Planner model when --topic is used")
     render_options(generate)
     queue = sub.add_parser("queue", help="Manage the SQLite topic schedule")
     queue.add_argument("--db", type=Path, default=ROOT / "topics.sqlite3")
@@ -54,7 +67,19 @@ def parser():
     retry.add_argument("id", type=int)
     worker = actions.add_parser("run", help="Process up to --limit due topics, then exit")
     worker.add_argument("--limit", type=int, default=1)
+    worker.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
+                        help="AI planner provider; defaults to AI_PLANNER_PROVIDER")
+    worker.add_argument("--model", help="Planner model; defaults to AI_PLANNER_MODEL")
     render_options(worker)
+    daily = actions.add_parser("daily", help="Queue one unused educational topic and render today's video")
+    daily.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
+                       help="AI planner provider; defaults to AI_PLANNER_PROVIDER")
+    daily.add_argument("--model", help="Planner model; defaults to AI_PLANNER_MODEL")
+    daily.add_argument("--no-upload", action="store_true", help="Render locally without automatic YouTube upload")
+    render_options(daily, duration_default="120")
+    schedule = actions.add_parser("schedule", help="Add the next educational series topics to the daily queue")
+    schedule.add_argument("--days", type=int, default=1, help="Number of daily topics to add")
+    schedule.add_argument("--start", type=date.fromisoformat, default=date.today(), help="First due date, YYYY-MM-DD")
     return p
 
 
@@ -97,14 +122,23 @@ def main(argv=None):
             story = Storyboard.read(args.storyboard)
             print(f"Valid: {len(story.scenes)} Hinglish scenes with English-only captions, {story.duration} seconds")
         elif args.command == "plan":
-            plan(args.topic).write(args.out)
+            plan(args.topic, provider=args.provider, model=args.model, duration=int(args.duration)).write(args.out)
             print(args.out)
         elif args.command == "generate":
             from .pipeline import generate
-            story = Storyboard.read(args.storyboard) if args.storyboard else plan(args.topic)
+            if args.storyboard:
+                story = Storyboard.read(args.storyboard)
+            else:
+                topic = args.topic
+                if not topic:
+                    from .topic_catalog import random_topic
+                    topic = random_topic()
+                    print(f"Random topic: {topic}", flush=True)
+                story = plan(topic, provider=args.provider, model=args.model, duration=int(args.duration))
             print(generate(story, args.output, preview=args.preview, silent=args.silent,
                            voice_dir=args.voice_dir, music=args.music, still=args.still,
-                           resolution=int(args.resolution), fast=args.fast, workers=args.workers))
+                           resolution=int(args.resolution), fast=args.fast, workers=args.workers,
+                           topic_image_provider=args.topic_image, topic_image_model=args.topic_image_model))
         elif args.command == "queue":
             from .queue import TopicQueue
             queue = TopicQueue(args.db)
@@ -115,23 +149,63 @@ def main(argv=None):
                     print(json.dumps(queue.rows(), ensure_ascii=False, indent=2))
                 elif args.action == "retry":
                     queue.retry(args.id)
-                elif args.action == "run":
-                    if args.limit < 1:
+                elif args.action == "schedule":
+                    if args.days < 1:
+                        raise ValueError("--days must be positive")
+                    from .topic_catalog import topic_for_day
+                    rows = queue.rows()
+                    existing = [row["topic"] for row in rows]
+                    for offset in range(args.days):
+                        topic = topic_for_day(existing, offset)
+                        due = args.start.fromordinal(args.start.toordinal() + offset).isoformat()
+                        queue.add(topic, due)
+                        existing.append(topic)
+                        print(f"Queued {due}: {topic}")
+                elif args.action in {"run", "daily"}:
+                    if args.action == "run" and args.limit < 1:
                         raise ValueError("--limit must be positive")
+                    if args.action == "daily":
+                        from .topic_catalog import topic_for_day
+                        today = date.today().isoformat()
+                        rows = queue.rows()
+                        if not any(row["status"] == "pending" and row["due"] <= today for row in rows):
+                            existing = [row["topic"] for row in rows]
+                            topic = topic_for_day(existing, date.today().toordinal())
+                            queue.add(topic, today)
+                            print(f"Queued today: {topic}")
+                        args.limit = 1
                     from .pipeline import generate, preflight
                     preflight()
-                    if not os.getenv("OPENAI_API_KEY"):
-                        raise ValueError("Queue topic planning requires OPENAI_API_KEY")
+                    provider = args.provider or os.getenv("AI_PLANNER_PROVIDER", "gemini")
+                    if provider == "gemini":
+                        has_key = bool(os.getenv("GEMINI_API_KEY"))
+                    else:
+                        has_key = bool(os.getenv("AI_API_KEY") or os.getenv("OPENAI_API_KEY"))
+                    if not has_key:
+                        raise ValueError(f"Queue topic planning requires credentials for {provider}")
                     for _ in range(args.limit):
                         row = queue.claim(date.today().isoformat())
                         if not row:
                             print("No topics due")
                             break
                         try:
-                            video = generate(plan(row["topic"]), args.output, preview=args.preview,
+                            story = plan(row["topic"], provider=provider, model=args.model,
+                                         duration=int(args.duration))
+                            video = generate(story, args.output, preview=args.preview,
                                              silent=args.silent, voice_dir=args.voice_dir, music=args.music,
-                                             fast=args.fast, workers=args.workers)
+                                             fast=args.fast, workers=args.workers,
+                                             topic_image_provider=args.topic_image,
+                                             topic_image_model=args.topic_image_model)
+                            upload_report = None
+                            if args.action == "daily" and not args.no_upload:
+                                from .publishing import publish_job, prune_completed_jobs
+                                upload_report = publish_job(video, platform="youtube")
                             queue.finish(row["id"], output=video)
+                            if upload_report is not None:
+                                removed = prune_completed_jobs(args.output, keep=2)
+                                print(json.dumps({"youtube": upload_report,
+                                                  "removed_jobs": [str(path) for path in removed]},
+                                                 ensure_ascii=False, indent=2))
                             print(video)
                         except BaseException as exc:
                             queue.finish(row["id"], error=str(exc))

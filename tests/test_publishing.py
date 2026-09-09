@@ -24,7 +24,7 @@ def test_cli_has_one_publishing_namespace():
     {"size": (270,480), "fps": 5, "duration": 30, "audio_codec": "aac"},
     {"size": (1920,1080), "fps": 30, "duration": 30, "audio_codec": "aac"},
     {"size": (1080,1920), "fps": 5, "duration": 30, "audio_codec": "aac"},
-    {"size": (1080,1920), "fps": 30, "duration": 90, "audio_codec": "aac"},
+    {"size": (1080,1920), "fps": 30, "duration": 181, "audio_codec": "aac"},
     {"size": (1080,1920), "fps": 30, "duration": 30},
 ])
 def test_preview_and_incompatible_media_rejected(info):
