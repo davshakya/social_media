@@ -94,7 +94,7 @@ def generate(story, output=Path("videos"), *, preview=False, silent=False, voice
         "title": story.hook[:100],
         "description": f"{story.hook}\n\n{story.cta}\n\n" + " ".join(hashtags),
         "tags": [tag.lstrip("#") for tag in story.hashtags],
-        "youtube_visibility": "private",
+        "youtube_visibility": os.getenv("YOUTUBE_VISIBILITY", "public"),
         "made_for_kids": False,
     }
     (folder / "social_metadata.json").write_text(

@@ -46,10 +46,10 @@ def media_info(path):
         reader.close()
 
 
-def check_media(info):
+def check_media(info, *, allow_low_resolution=False):
     width, height = info["size"]
-    if width < 1080 or height < 1920 or abs(width/height - 9/16) > 0.001:
-        raise ValueError("Publish a finished vertical video of at least 1080×1920. The 270p preview is not upload-ready.")
+    if abs(width/height - 9/16) > 0.001:
+        raise ValueError("Publish a vertical video with a 9:16 aspect ratio.")
     if not 23 <= info.get("fps", 0) <= 60:
         raise ValueError("Publishing requires 23–60 fps; generate without --preview.")
     if not 3 <= info.get("duration", 0) <= 180:
@@ -58,7 +58,7 @@ def check_media(info):
         raise ValueError("The video needs an audio track before publishing.")
 
 
-def prepare(video, metadata_path, output, *, allow_silent=False):
+def prepare(video, metadata_path, output, *, allow_silent=False, allow_low_resolution=False):
     video = Path(video).resolve()
     if not video.is_file():
         raise ValueError(f"Video not found: {video}")
@@ -70,13 +70,13 @@ def prepare(video, metadata_path, output, *, allow_silent=False):
             raise ValueError("Only completed production jobs can be prepared for publishing.")
         if job.get("silent") and not allow_silent:
             raise ValueError("This job has no narration. Provide a narrated video or explicitly pass --allow-silent.")
-    check_media(media_info(video))
+    check_media(media_info(video), allow_low_resolution=allow_low_resolution)
     folder = Path(output).resolve() / ("post-" + uuid4().hex[:12])
     folder.mkdir(parents=True)
     target = folder / "video.mp4"
-    # Common conservative encoding profile for all three platforms; no preview upscaling.
+        # Preserve the source resolution; publishing does not upscale the video.
     run([executable("ffmpeg"), "-y", "-i", video, "-map", "0:v:0", "-map", "0:a:0",
-         "-vf", "scale=1080:1920,setsar=1", "-r", "30", "-c:v", "libx264", "-preset", "fast",
+            "-vf", "setsar=1", "-r", "30", "-c:v", "libx264", "-preset", "fast",
          "-crf", "20", "-maxrate", "12M", "-bufsize", "24M", "-g", "60", "-flags", "+cgop",
          "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k",
          "-movflags", "+faststart", "-use_editlist", "0", target], log=folder / "encoding.log")
@@ -84,6 +84,7 @@ def prepare(video, metadata_path, output, *, allow_silent=False):
     if target.stat().st_size > 1_000_000_000:
         raise ValueError("Encoded video exceeds the 1 GB package limit")
     package = {"version": 1, "video": str(target), "sha256": digest(target), "source": str(video),
+               "allow_low_resolution": allow_low_resolution,
                "metadata": metadata.model_dump(), "accounts": json.loads(ACCOUNTS.read_text(encoding="utf-8")),
                "media": media_info(target)}
     path = folder / "post.json"
@@ -100,7 +101,7 @@ def read_package(path):
         raise ValueError("Package destinations differ from config/social_accounts.json; prepare a new package.")
     if digest(package["video"]) != package["sha256"]:
         raise ValueError("Video changed after preparation. Prepare a new package before uploading.")
-    check_media(media_info(package["video"]))
+    check_media(media_info(package["video"]), allow_low_resolution=package.get("allow_low_resolution", False))
     return package
 
 
@@ -161,7 +162,7 @@ def accounts():
 
 
 def publish(video, platforms=PLATFORMS, *, title=None, description=None, tags=None,
-            visibility="private", made_for_kids=None, allow_silent=False):
+            visibility="private", made_for_kids=None, allow_silent=False, allow_low_resolution=False):
     """One-command compatibility wrapper around package preparation and tracked uploads."""
     if made_for_kids is None:
         raise ValueError("Specify whether this video is made for kids before publishing.")
@@ -173,7 +174,8 @@ def publish(video, platforms=PLATFORMS, *, title=None, description=None, tags=No
                         youtube_visibility=visibility, made_for_kids=made_for_kids)
     meta_path = output / ("metadata-" + uuid4().hex + ".json")
     meta_path.write_text(metadata.model_dump_json(indent=2), encoding="utf-8")
-    package = prepare(video, meta_path, output, allow_silent=allow_silent)
+    package = prepare(video, meta_path, output, allow_silent=allow_silent,
+                      allow_low_resolution=allow_low_resolution)
     print(f"Prepared package: {package}", flush=True)
     return send(package, platforms, output / "uploads.sqlite3")
 
@@ -187,7 +189,7 @@ def publish_job(video, *, platform="youtube"):
     metadata = Metadata.model_validate_json(metadata_path.read_text(encoding="utf-8-sig"))
     report = publish(video, (platform,), title=metadata.title, description=metadata.description,
                      tags=metadata.tags, visibility=metadata.youtube_visibility,
-                     made_for_kids=metadata.made_for_kids)
+                     made_for_kids=metadata.made_for_kids, allow_low_resolution=True)
     result = report.get(platform, {})
     if "error" in result:
         raise RuntimeError(f"{platform} upload failed: {result['error']}")
@@ -272,11 +274,15 @@ def add_cli(sub):
     direct.add_argument("--visibility", choices=("private", "unlisted", "public"), default="private")
     direct.add_argument("--made-for-kids", choices=("yes", "no"), required=True)
     direct.add_argument("--allow-silent", action="store_true")
+    direct.add_argument("--allow-low-resolution", action="store_true",
+                        help="Allow 320p/480p input; the upload package is still encoded at 1080p")
     prep = actions.add_parser("prepare", help="Encode a local, reviewable upload package; no upload")
     prep.add_argument("video", type=Path)
     prep.add_argument("--metadata", type=Path, required=True)
     prep.add_argument("--output", type=Path, default=ROOT / "publishing")
     prep.add_argument("--allow-silent", action="store_true")
+    prep.add_argument("--allow-low-resolution", action="store_true",
+                      help="Allow 320p/480p input; the upload package is still encoded at 1080p")
     upload = actions.add_parser("send", help="Upload/post the prepared package to selected platforms")
     upload.add_argument("package", type=Path)
     upload.add_argument("--platform", choices=(*PLATFORMS, "all"), required=True)
@@ -291,14 +297,16 @@ def run_cli(args):
     action = args.publish_action
     if action == "video":
         result = publish(args.video, selected(args.platform), title=args.title, description=args.description,
-                         visibility=args.visibility, made_for_kids=args.made_for_kids == "yes", allow_silent=args.allow_silent)
+                         visibility=args.visibility, made_for_kids=args.made_for_kids == "yes",
+                         allow_silent=args.allow_silent, allow_low_resolution=args.allow_low_resolution)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1 if any("error" in r for r in result.values()) else 0
     elif action == "login-youtube":
         from .social_providers import youtube_login
         print(youtube_login())
     elif action == "prepare":
-        print(prepare(args.video, args.metadata, args.output, allow_silent=args.allow_silent))
+        print(prepare(args.video, args.metadata, args.output, allow_silent=args.allow_silent,
+                  allow_low_resolution=args.allow_low_resolution))
     elif action == "check":
         from .social_providers import local_path
         accounts = json.loads(ACCOUNTS.read_text(encoding="utf-8"))

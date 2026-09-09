@@ -222,17 +222,23 @@ Check one provider online:
 .\.venv\Scripts\python.exe science_video_generator.py publish check --online --platform instagram
 ```
 
-Publish a completed render. Start with YouTube `private` or `unlisted`; Instagram and Facebook uploads are sent when those platforms are selected.
+Publish a completed production render. YouTube visibility can be `public`, `private`, or `unlisted`; Instagram and Facebook uploads are sent when those platforms are selected.
 
 ```powershell
 .\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --title "Science video" --description "Hindi science short" --visibility private --made-for-kids no
 .\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform all --title "Science video" --description "Hindi science short" --visibility private --made-for-kids no
 ```
 
-Use `--platform youtube`, `instagram`, `facebook`, or `all`. Title, description, and audience declaration are required. Publishing currently requires a completed 1080 × 1920 production video; 720 × 1280 output is not accepted by the upload validator:
+Use `--platform youtube`, `instagram`, `facebook`, or `all`. Title, description, and audience declaration are required. Any valid vertical production resolution is preserved during upload. Preview jobs are rejected:
 
 ```powershell
 .\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --title "Ice floats on water" --description "Hindi science short" --visibility unlisted --made-for-kids no
+```
+
+Videos are published at their original resolution. The upload package does not upscale the source; use a production render rather than `--preview`.
+
+```powershell
+\.\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --title "Technology lesson" --description "A practical technology lesson." --visibility private --made-for-kids no
 ```
 
 YouTube visibility applies to YouTube uploads. Receipts are written to `publishing\<job-id>\receipts.json`; this directory is ignored by Git. If a platform fails after another platform has succeeded, inspect the receipts and retry only the failed platform rather than publishing all platforms again.
@@ -269,6 +275,8 @@ Failed jobs retain artifacts. Retry by rerunning the command (a new job is creat
 ```
 
 `queue daily` selects the next unused topic from the AI, machine learning, data science, Python, and coding series, asks the configured planner to create a validated 2-minute storyboard, renders one animated video, uploads it to YouTube, and keeps only the two newest completed jobs. It also writes `social_metadata.json` containing the hook, CTA, and hashtags. Automatic upload requires YouTube OAuth setup (`publish login-youtube`) and a production render of at least 1080 × 1920. Use `--duration 180` for 3-minute videos, `--no-upload` for local-only renders, or `--resolution 320` for a small 320 × 568 video. For Gemini planning with AI narration, configure both `GEMINI_API_KEY` and `OPENAI_API_KEY`; use `--silent` or `--voice-dir` if you do not want OpenAI TTS.
+
+Daily YouTube uploads are public by default. Set `YOUTUBE_VISIBILITY=private` or `unlisted` in `.env` when testing.
 
 To generate a 3-minute daily video manually:
 

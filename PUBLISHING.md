@@ -55,7 +55,7 @@ Review [examples/ice_float_post.json](examples/ice_float_post.json): Hindi title
 .\.venv\Scripts\python.exe science_video_generator.py publish prepare videos/YOUR-JOB/final.mp4 --metadata examples/ice_float_post.json
 ```
 
-Preparation does not upload anything. It rejects failed/preview jobs and makes a separate 1080×1920, 30 fps H.264/AAC MP4 with 48 kHz, 128 kbps audio. The original stays intact. `publishing/post-.../post.json` contains reviewable metadata, destinations and a video hash. The workflow accepts 3–180 second vertical sources at least 1080×1920 and 23–60 fps. The generator also supports lower-resolution renders, but the current publishing validator requires at least 1080×1920. `--allow-silent` permits completed production jobs without narration, but cannot bypass preview or resolution/frame-rate checks.
+Preparation does not upload anything. It rejects failed/preview jobs and makes a separate H.264/AAC MP4 at the original source resolution with 48 kHz, 128 kbps audio. The original stays intact. `publishing/post-.../post.json` contains reviewable metadata, destinations and a video hash. The workflow accepts 3–180 second vertical sources at any resolution and 23–60 fps. `--allow-silent` permits completed production jobs without narration, but cannot bypass preview or frame-rate checks.
 
 ## Publish and track
 
@@ -70,7 +70,7 @@ Review the prepared file, then use the actual package path:
 
 `send` uploads/posts content. Instagram/Facebook use their normal public publishing flow; `youtube_visibility` affects only YouTube. `all` verifies all selected accounts before any upload. Use `youtube` while only that account is connected.
 
-The one-command interface is also supported: `publish video PATH --platform youtube --title "TITLE" --description "CAPTION" --visibility private --made-for-kids no`. It prepares a package and uploads immediately.
+The one-command interface is also supported: `publish video PATH --platform youtube --title "TITLE" --description "CAPTION" --visibility public --made-for-kids no`. It prepares a package and uploads immediately. Use `private` or `unlisted` when testing.
 
 SQLite tracks each platform/account/video hash. Rerunning skips successful uploads. Timeouts/interruption block blind retries because the service might already have accepted the post. Inspect `history`, `status` and the creator interface. Only after confirming that nothing was published and no worker is active, run `publish resolve-not-published KEY` and retry. Keep the ledger; deleting it removes duplicate protection.
 
