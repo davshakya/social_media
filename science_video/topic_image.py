@@ -14,15 +14,18 @@ def _valid_image(data):
             data.startswith(b"\xff\xd8\xff"))
 
 
-def generate_topic_image(topic, destination, *, provider=None, model=None):
+def generate_topic_image(topic, destination, *, provider=None, model=None, standalone=False):
     """Generate one bounded topic image and return its path, or None when disabled."""
     provider = (provider or os.getenv("TOPIC_IMAGE_PROVIDER", "none")).lower()
     if provider in {"", "none", "off"}:
         return None
-    if provider != "openai":
-        raise ValueError("Unsupported topic image provider. Use none or openai.")
+    if provider == "local":
+        from .local_image import create_image
+        return create_image(topic, destination, standalone=standalone)
+    if provider not in {"openai", "gemini"}:
+        raise ValueError("Unsupported topic image provider. Use none, openai, or gemini.")
     api_key = os.getenv("TOPIC_IMAGE_API_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    if provider == "openai" and not api_key:
         raise ValueError("Set TOPIC_IMAGE_API_KEY or OPENAI_API_KEY for topic images.")
     destination = Path(destination)
     if destination.is_file() and destination.stat().st_size <= MAX_IMAGE_BYTES:
@@ -36,18 +39,22 @@ def generate_topic_image(topic, destination, *, provider=None, model=None):
         "Do not include readable text, logos, brand names, faces, or watermarks. "
         f"The topic is: {topic[:300]}"
     )
-    client = OpenAI(api_key=api_key, timeout=120, max_retries=2)
-    response = client.images.generate(
-        model=model or os.getenv("TOPIC_IMAGE_MODEL", "gpt-image-1"),
-        prompt=prompt, size="1024x1024")
-    item = response.data[0]
-    if getattr(item, "b64_json", None):
-        data = base64.b64decode(item.b64_json)
-    elif getattr(item, "url", None):
-        with urlopen(item.url, timeout=60) as stream:
-            data = stream.read(MAX_IMAGE_BYTES + 1)
+    if provider == "gemini":
+        from .gemini_media import illustration
+        data, model = illustration(prompt, model)
     else:
-        raise ValueError("Image provider returned no image data.")
+        client = OpenAI(api_key=api_key, timeout=120, max_retries=2)
+        response = client.images.generate(
+            model=model or os.getenv("TOPIC_IMAGE_MODEL", "gpt-image-1"),
+            prompt=prompt, size="1024x1024")
+        item = response.data[0]
+        if getattr(item, "b64_json", None):
+            data = base64.b64decode(item.b64_json)
+        elif getattr(item, "url", None):
+            with urlopen(item.url, timeout=60) as stream:
+                data = stream.read(MAX_IMAGE_BYTES + 1)
+        else:
+            raise ValueError("Image provider returned no image data.")
     if len(data) > MAX_IMAGE_BYTES or not _valid_image(data):
         raise ValueError("Image provider returned an unsupported or oversized image.")
     destination.parent.mkdir(parents=True, exist_ok=True)

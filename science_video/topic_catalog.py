@@ -1,5 +1,8 @@
 """Curated daily topics for the educational technology series."""
 import secrets
+import json
+import sqlite3
+from pathlib import Path
 
 TOPICS = (
     "What actually happens when Python runs a line of code?",
@@ -38,6 +41,29 @@ TOPICS = (
 def random_topic():
     """Return a random topic from the curated educational series."""
     return secrets.choice(TOPICS)
+
+
+def reserve_fresh_topic(output):
+    """Persist selections, including failed attempts, to avoid repeating topics."""
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(output / "topic_history.sqlite3", timeout=30) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS used_topics (topic TEXT PRIMARY KEY)")
+        db.execute("BEGIN IMMEDIATE")
+        for path in output.glob("*/storyboard.json"):
+            try:
+                topic = json.loads(path.read_text(encoding="utf-8"))["topic"]
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if isinstance(topic, str):
+                db.execute("INSERT OR IGNORE INTO used_topics VALUES (?)", (topic.casefold(),))
+        used = {row[0] for row in db.execute("SELECT topic FROM used_topics")}
+        available = [topic for topic in TOPICS if topic.casefold() not in used]
+        if not available:
+            raise ValueError("All catalog topics have been used. Add topics to science_video/topic_catalog.py or supply a new --topic.")
+        topic = secrets.choice(available)
+        db.execute("INSERT INTO used_topics VALUES (?)", (topic.casefold(),))
+        return topic
 
 
 def topic_for_day(existing_topics, day_index=0):

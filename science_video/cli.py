@@ -20,8 +20,8 @@ def render_options(parser, *, duration_default="30"):
                         help="Vertical production width; 320 renders 320×568")
     parser.add_argument("--duration", choices=("30", "120", "150", "180"), default=duration_default,
                         help="Video duration in seconds; daily defaults to 120 (2 minutes)")
-    parser.add_argument("--topic-image", choices=("none", "openai"),
-                        help="Generate a topic-related background image; defaults to TOPIC_IMAGE_PROVIDER")
+    parser.add_argument("--topic-image", choices=("none", "local", "auto", "openai", "gemini"),
+                        help="Image generation: auto uses --provider; none uses local visuals")
     parser.add_argument("--topic-image-model", help="Image model; defaults to TOPIC_IMAGE_MODEL")
     voice = parser.add_mutually_exclusive_group()
     voice.add_argument("--silent", action="store_true", help="Explicitly render without speech (labeled preview)")
@@ -41,7 +41,7 @@ def parser():
     planner.add_argument("topic")
     planner.add_argument("--out", type=Path, required=True)
     planner.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
-                         help="AI planner provider; defaults to AI_PLANNER_PROVIDER")
+                         help="AI provider; defaults to AI_PLANNER_PROVIDER")
     planner.add_argument("--model", help="Planner model; defaults to AI_PLANNER_MODEL or OPENAI_MODEL")
     planner.add_argument("--duration", choices=("30", "120", "150", "180"), default="30",
                          help="Storyboard duration in seconds")
@@ -52,8 +52,10 @@ def parser():
     source.add_argument("--storyboard", type=Path)
     source.add_argument("--topic")
     generate.add_argument("--still", action="store_true", help="Render one diagnostic image per scene")
+    generate.add_argument("--type", choices=("image", "video", "both"), default="video",
+                          help="Output to create; image/both default to local images, video preserves existing image settings")
     generate.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
-                          help="AI planner provider when --topic is used")
+                          help="AI provider for planning, narration, and enabled images")
     generate.add_argument("--model", help="Planner model when --topic is used")
     render_options(generate)
     queue = sub.add_parser("queue", help="Manage the SQLite topic schedule")
@@ -68,12 +70,12 @@ def parser():
     worker = actions.add_parser("run", help="Process up to --limit due topics, then exit")
     worker.add_argument("--limit", type=int, default=1)
     worker.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
-                        help="AI planner provider; defaults to AI_PLANNER_PROVIDER")
+                        help="AI provider; defaults to AI_PLANNER_PROVIDER")
     worker.add_argument("--model", help="Planner model; defaults to AI_PLANNER_MODEL")
     render_options(worker)
     daily = actions.add_parser("daily", help="Queue one unused educational topic and render today's video")
     daily.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
-                       help="AI planner provider; defaults to AI_PLANNER_PROVIDER")
+                       help="AI provider; defaults to AI_PLANNER_PROVIDER")
     daily.add_argument("--model", help="Planner model; defaults to AI_PLANNER_MODEL")
     daily.add_argument("--no-upload", action="store_true", help="Render locally without automatic YouTube upload")
     render_options(daily, duration_default="120")
@@ -88,7 +90,18 @@ def main(argv=None):
         sys.stdout.reconfigure(encoding="utf-8")
     load_dotenv(ROOT / ".env")
     args = parser().parse_args(argv)
+    if hasattr(args, "provider"):
+        args.provider = args.provider or os.getenv("AI_PLANNER_PROVIDER", "gemini")
     try:
+        if args.command == "generate" and args.type in {"image", "both"}:
+            if args.still:
+                raise ValueError("--still cannot be combined with --type image or both.")
+            if args.topic_image == "none":
+                raise ValueError("--type image/both requires images; use --topic-image local or auto.")
+            args.topic_image = args.topic_image or "local"
+        if hasattr(args, "topic_image"):
+            from .pipeline import resolve_image_provider
+            resolve_image_provider(args.provider, args.topic_image)
         if args.command == "publish":
             from .publishing import run_cli, redact_error
             try:
@@ -126,19 +139,34 @@ def main(argv=None):
             print(args.out)
         elif args.command == "generate":
             from .pipeline import generate
+            if args.type == "image":
+                from .pipeline import generate_image
+                if args.storyboard:
+                    topic = Storyboard.read(args.storyboard).topic
+                elif args.topic:
+                    topic = args.topic
+                else:
+                    from .topic_catalog import reserve_fresh_topic
+                    topic = reserve_fresh_topic(args.output)
+                print(f"Image topic: {topic}", flush=True)
+                print(generate_image(topic, args.output, provider=args.provider,
+                                     image_provider=args.topic_image, model=args.topic_image_model))
+                return 0
             if args.storyboard:
+                print("Storyboard: loading local JSON (no planner API request).", flush=True)
                 story = Storyboard.read(args.storyboard)
             else:
                 topic = args.topic
                 if not topic:
-                    from .topic_catalog import random_topic
-                    topic = random_topic()
-                    print(f"Random topic: {topic}", flush=True)
+                    from .topic_catalog import reserve_fresh_topic
+                    topic = reserve_fresh_topic(args.output)
+                    print(f"New topic: {topic}", flush=True)
                 story = plan(topic, provider=args.provider, model=args.model, duration=int(args.duration))
             print(generate(story, args.output, preview=args.preview, silent=args.silent,
-                           voice_dir=args.voice_dir, music=args.music, still=args.still,
+                           voice_dir=args.voice_dir, music=args.music, still=args.still, provider=args.provider,
                            resolution=int(args.resolution), fast=args.fast, workers=args.workers,
-                           topic_image_provider=args.topic_image, topic_image_model=args.topic_image_model))
+                           topic_image_provider=args.topic_image, topic_image_model=args.topic_image_model,
+                           require_image=args.type == "both"))
         elif args.command == "queue":
             from .queue import TopicQueue
             queue = TopicQueue(args.db)
@@ -192,7 +220,7 @@ def main(argv=None):
                             story = plan(row["topic"], provider=provider, model=args.model,
                                          duration=int(args.duration))
                             video = generate(story, args.output, preview=args.preview,
-                                             silent=args.silent, voice_dir=args.voice_dir, music=args.music,
+                                             silent=args.silent, voice_dir=args.voice_dir, music=args.music, provider=provider,
                                              fast=args.fast, workers=args.workers,
                                              topic_image_provider=args.topic_image,
                                              topic_image_model=args.topic_image_model)

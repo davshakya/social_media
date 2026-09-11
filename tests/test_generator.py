@@ -33,6 +33,55 @@ def test_roundtrip_unicode(tmp_path):
     assert Storyboard.read(path) == demo_storyboard()
 
 
+def test_fresh_topics_persist_and_exclude_existing_storyboards(tmp_path, monkeypatch):
+    import science_video.topic_catalog as catalog
+    monkeypatch.setattr(catalog, "TOPICS", ("First", "Second", "Third"))
+    old = tmp_path / "old-job"
+    old.mkdir()
+    (old / "storyboard.json").write_text('{"topic": "FIRST"}', encoding="utf-8")
+    selected = {catalog.reserve_fresh_topic(tmp_path), catalog.reserve_fresh_topic(tmp_path)}
+    assert selected == {"Second", "Third"}
+    with pytest.raises(ValueError, match="All catalog topics"):
+        catalog.reserve_fresh_topic(tmp_path)
+
+
+def test_shadow_warnings_do_not_hide_fatal_render_errors():
+    from science_video.pipeline import check_render_log
+    log = "Error: Shadow buffer full, may result in missing shadows and lower performance. (6039 / 2048)\nError: Reached max shadow updates."
+    assert len(check_render_log(log)) == 1
+    with pytest.raises(RuntimeError, match="Cannot save"):
+        check_render_log(log + "\nError: Cannot save image")
+
+
+def test_render_frames_require_complete_nonempty_sequence(tmp_path):
+    from science_video.pipeline import check_render_frames
+    (tmp_path / "frames").mkdir()
+    (tmp_path / "frames/frame_0001.png").write_bytes(b"frame")
+    with pytest.raises(RuntimeError, match="frame_0002"):
+        check_render_frames(tmp_path, 2)
+    (tmp_path / "frames/frame_0002.png").touch()
+    with pytest.raises(RuntimeError, match="frame_0002"):
+        check_render_frames(tmp_path, 2)
+
+
+def test_narration_explains_openai_credit_failure(tmp_path, monkeypatch):
+    import httpx
+    import openai
+    from types import SimpleNamespace
+
+    def fail(**kwargs):
+        raise openai.RateLimitError(
+            "No credits", response=httpx.Response(429, request=httpx.Request("POST", "https://example.test")),
+            body={"code": "credit_balance_exhausted"},
+        )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(
+        audio=SimpleNamespace(speech=SimpleNamespace(with_streaming_response=SimpleNamespace(create=fail)))))
+    with pytest.raises(ValueError, match="OpenAI narration has no API credits"):
+        narration(demo_storyboard(), tmp_path, "unused")
+
+
 def test_real_audio_timing_and_captions(tmp_path):
     ffmpeg = executable("ffmpeg")
     timeline = narration(demo_storyboard(), tmp_path, ffmpeg, silent=True, fps=5)
@@ -144,13 +193,13 @@ def test_api_planner_contract_and_refusal(monkeypatch):
         captured.update(kwargs)
         return SimpleNamespace(output_parsed=demo_storyboard())
     monkeypatch.setattr(openai, "OpenAI", lambda **kw: SimpleNamespace(responses=SimpleNamespace(parse=parse)))
-    assert plan("Why does ice float?") == demo_storyboard()
+    assert plan("Why does ice float?", provider="openai") == demo_storyboard()
     assert captured["text_format"] is Storyboard
     assert captured["input"][-1]["content"] == "Why does ice float?"
     monkeypatch.setattr(openai, "OpenAI", lambda **kw: SimpleNamespace(
         responses=SimpleNamespace(parse=lambda **kw: SimpleNamespace(output_parsed=None))))
     with pytest.raises(ValueError, match="refused"):
-        plan("Unsupported topic")
+        plan("Unsupported topic", provider="openai")
 
 
 def test_composition_with_hindi_and_awkward_output_path(tmp_path):

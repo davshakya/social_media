@@ -166,13 +166,12 @@ def plan(topic: str, *, provider=None, model=None, duration=30, _allow_fallback=
     import os
     explicit_provider = provider is not None
     provider = (provider or os.getenv("AI_PLANNER_PROVIDER", "gemini")).lower()
-    if not explicit_provider and provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
-        provider = "openai"
-    api_key = (os.getenv("GEMINI_API_KEY") if provider == "gemini" else None) or os.getenv("AI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY") if provider == "gemini" else (os.getenv("OPENAI_API_KEY") if provider == "openai" else os.getenv("AI_API_KEY"))
     if not api_key:
         raise ValueError("Set GEMINI_API_KEY, AI_API_KEY, or OPENAI_API_KEY in .env, or use the bundled demo storyboard.")
     if provider not in {"openai", "openrouter", "groq", "together", "custom", "gemini"}:
         raise ValueError("Unsupported planner provider. Use openai, openrouter, groq, together, custom, or gemini.")
+    print(f"Storyboard planner: {provider}.", flush=True)
     if duration not in (30, 120, 150, 180):
         raise ValueError("Video duration must be 30, 120, 150, or 180 seconds")
     selected_model = model or os.getenv("AI_PLANNER_MODEL") or (
@@ -206,7 +205,7 @@ def plan(topic: str, *, provider=None, model=None, duration=30, _allow_fallback=
                     return _plan_gemini(topic, fallback, api_key, system_prompt, duration)
                 except Exception as fallback_exc:
                     exc = fallback_exc
-            if _allow_fallback and _provider_failure(exc) and (os.getenv("AI_API_KEY") or os.getenv("OPENAI_API_KEY")):
+            if not explicit_provider and _allow_fallback and _provider_failure(exc) and (os.getenv("AI_API_KEY") or os.getenv("OPENAI_API_KEY")):
                 print("Gemini unavailable; trying OpenAI planner.", flush=True)
                 return plan(topic, provider="openai", duration=duration, _allow_fallback=False)
             raise
@@ -224,7 +223,7 @@ def plan(topic: str, *, provider=None, model=None, duration=30, _allow_fallback=
         return _plan_openai(topic, selected_model, api_key, system_prompt, duration,
                             base_url=base_url if provider != "openai" else None)
     except Exception as exc:
-        if _allow_fallback and _provider_failure(exc) and os.getenv("GEMINI_API_KEY"):
+        if not explicit_provider and _allow_fallback and _provider_failure(exc) and os.getenv("GEMINI_API_KEY"):
             print("OpenAI unavailable; trying Gemini planner.", flush=True)
             return plan(topic, provider="gemini", duration=duration, _allow_fallback=False)
         raise

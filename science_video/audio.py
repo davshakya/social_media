@@ -37,10 +37,12 @@ def tempo_filter(ratio):
     return ",".join(filters + [f"atempo={ratio:.8f}"])
 
 
-def narration(story, folder, ffmpeg, *, silent=False, voice_dir=None, fps=30):
+def narration(story, folder, ffmpeg, *, silent=False, voice_dir=None, fps=30, provider="openai"):
     """Synthesize separately so measured audio defines exact scene boundaries."""
     client = None
-    if not silent and voice_dir is None:
+    if not silent and voice_dir is None and provider not in {"openai", "gemini"}:
+        raise ValueError("AI narration supports openai or gemini; use --voice-dir or --silent for other planners.")
+    if not silent and voice_dir is None and provider == "openai":
         from openai import OpenAI
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("Set OPENAI_API_KEY, provide --voice-dir, or explicitly use --silent.")
@@ -55,16 +57,28 @@ def narration(story, folder, ffmpeg, *, silent=False, voice_dir=None, fps=30):
             if not source.is_file():
                 raise ValueError(f"Missing narration file: {source}")
             run([ffmpeg, "-y", "-i", source, "-ar", RATE, "-ac", "1", "-c:a", "pcm_s16le", path])
+        elif provider == "gemini":
+            from .gemini_media import speech
+            speech(scene.narration, path)
         else:
-            with client.audio.speech.with_streaming_response.create(
-                model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
-                voice=os.getenv("OPENAI_TTS_VOICE", "coral"), input=scene.narration,
-                instructions=("Speak in a warm, confident, conversational Hinglish voice for a short science video. "
-                              "Pronounce Devanagari Hindi naturally. Pronounce Latin-script English science words in clear English. "
-                              "Use a lively but unhurried pace, with a short pause at sentence endings. Do not read punctuation aloud."),
-                response_format="wav",
-            ) as response:
-                response.stream_to_file(path)
+            try:
+                response_context = client.audio.speech.with_streaming_response.create(
+                    model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
+                    voice=os.getenv("OPENAI_TTS_VOICE", "coral"), input=scene.narration,
+                    instructions=("Speak in a warm, confident, conversational Hinglish voice for a short science video. "
+                                  "Pronounce Devanagari Hindi naturally. Pronounce Latin-script English science words in clear English. "
+                                  "Use a lively but unhurried pace, with a short pause at sentence endings. Do not read punctuation aloud."),
+                    response_format="wav",
+                )
+                with response_context as response:
+                    response.stream_to_file(path)
+            except Exception as exc:
+                if getattr(exc, "code", None) in {"insufficient_quota", "credit_balance_exhausted"}:
+                    raise ValueError(
+                        "OpenAI narration has no API credits available. Add credits to the OpenAI API account, or use --voice-dir "
+                        "with existing WAV files / --silent for a preview."
+                    ) from exc
+                raise
         duration = wav_duration(path)
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError(f"Empty or invalid narration: {path}")

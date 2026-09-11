@@ -52,14 +52,114 @@ Each job writes `blender.log` and `ffmpeg.log` in its job folder. Watch Blender 
 
 ### Hinglish narration and AI topic planning
 
-#### Use multiple AI providers
+#### Choose image, video, or both
 
-The planner and narrator are separate. You can use Gemini, OpenAI, OpenRouter, Groq, Together, or another compatible provider to create the storyboard, then use OpenAI TTS, Edge TTS, or recorded WAV files for narration.
+Use `generate --type image`, `--type video` (the default), or `--type both`.
 
-Each video can optionally include a topic-related AI background image. It uses the OpenAI Images API while the trusted Blender diagrams remain in front; the image receives a subtle animated zoom. Add these settings to `.env`:
+```powershell
+# Image only: entirely local, no storyboard planning or speech needed.
+.\.venv\Scripts\python.exe science_video_generator.py generate --type image --topic "How Python dictionaries work" --topic-image local
+
+# Video only, reusing your storyboard and recorded/generated WAV tracks.
+.\.venv\Scripts\python.exe science_video_generator.py generate --type video --storyboard videos\20260910-162800-31d8ad02\storyboard.json --voice-dir voice_tracks\latest --topic-image none --resolution 320 --fast
+
+# Both: standalone PNG plus MP4, with the PNG also used as a background.
+.\.venv\Scripts\python.exe science_video_generator.py generate --type both --storyboard videos\20260910-162800-31d8ad02\storyboard.json --voice-dir voice_tracks\latest --topic-image local --resolution 320 --fast
+```
+
+Replace the storyboard and voice paths with your files. Use `--silent` instead of `--voice-dir` for a video without speech. Image-only output skips narration, Blender, and FFmpeg; omit `--topic` to select an unused topic automatically. `image` and `both` default to local images; choose `--provider gemini --topic-image auto` for AI images. New video storyboards and AI speech still require the selected provider's API.
+
+Each run creates its own folder under `videos` (or `--output`). Image-only jobs save `topic_image.png` and report `image_complete` in `manifest.json`. Both jobs save `topic_image.png` and `final.mp4`; if image generation fails, the job reports failure rather than claiming both outputs succeeded. `--type video` preserves optional background-image settings; use `--topic-image none` to avoid a separate PNG. `--still` is a separate diagnostic mode and cannot be combined with `--type image` or `both`.
+
+#### Local topic images without AI credits
+
+Standalone images (`--type image`) include locally written introductory lessons for all 30 catalog topics: a definition, how it works, a practical example, and a takeaway. The job also saves `topic_notes.md` and the lesson text in `topic_image.json`. Custom topics without a matching lesson retain the decorative illustration; local generation cannot research arbitrary subjects. Video backgrounds remain text-free to leave room for captions.
+
+Use `--topic-image local` to draw a PNG with Pillow and include it as the animated Blender background. No image API or internet connection is used. The script selects a procedural diagram for dictionaries, charts, molecules, code, or networks based on the topic. These are decorative illustrations, not generated factual charts or photographs. Each job saves `topic_image.png` and `topic_image.json`.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+  --storyboard videos\20260910-162800-31d8ad02\storyboard.json `
+  --topic-image local `
+  --silent `
+  --resolution 320 `
+  --fast
+```
+
+This example is fully local and has no speech. Replace `--silent` with `--voice-dir voice_tracks\latest` if you have already generated WAV narration. Without either option, speech still uses the selected AI provider. Omit `--storyboard` to get a new topic, but storyboard planning still uses AI. Set `TOPIC_IMAGE_PROVIDER=local` in `.env` to make local images your default.
+
+#### Latest commands: one AI provider with local rendering
+
+For a different topic and matching AI image on every run, use:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+  --provider gemini `
+  --topic-image auto `
+  --duration 30 `
+  --resolution 320 `
+  --fast
+```
+
+Omit `--topic` and `--storyboard` to automatically choose an unused topic. Selections are stored in `videos/topic_history.sqlite3` (or your `--output` directory), including failed attempts, and existing job storyboards are excluded. Keep the same output directory to retain this history. After all 30 catalog topics are used, add topics to `science_video/topic_catalog.py` or provide a new `--topic`. Explicit topics and storyboards can still be reused. The image uses the same topic as the video; image generation requires access and quota with the selected provider and falls back to procedural visuals if unavailable.
+
+Use `--provider openai` in the same command for an OpenAI-only run. `--topic-image auto` follows your provider; conflicting explicit image providers are rejected before planning. An existing image-provider environment setting cannot redirect requests to the other service.
+
+Keep the settings for your selected provider in `.env`:
 
 ```env
-TOPIC_IMAGE_PROVIDER=openai
+GEMINI_API_KEY=your-gemini-api-key
+AI_PLANNER_PROVIDER=gemini
+GEMINI_TTS_MODEL=gemini-2.5-flash-preview-tts
+GEMINI_TTS_VOICE=Kore
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
+# Only needed for --provider openai:
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+OPENAI_TTS_VOICE=coral
+TOPIC_IMAGE_PROVIDER=none
+```
+
+Generate a new 30-second video from PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+  --topic "Why does ice float on water?" `
+  --provider gemini `
+  --topic-image none `
+  --duration 30 `
+  --resolution 320 `
+  --fast
+```
+
+`--provider gemini` uses Gemini for planning and speech; `--provider openai` uses OpenAI. Enabled AI images use that same provider. Python, Blender, and FFmpeg handle animation, timing, captions, generated music, and MP4 assembly locally. `--topic-image none` keeps backgrounds procedural and avoids an image API request. Use `--resolution 1080` for full-size vertical output.
+
+Reuse your existing storyboard:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+  --storyboard "D:\social_media\videos\20260907-105703-bfb3f8f2\storyboard.json" `
+  --topic-image none `
+  --duration 30 `
+  --resolution 320 `
+  --fast
+```
+
+Replace the storyboard path with your own file. Loading `--storyboard` skips the planner API; `--provider` still selects narration and enabled images. The loaded storyboard determines the duration; `--duration` controls planning of new storyboards. PowerShell continuation backticks must be the last character on each line, with no trailing spaces.
+
+Only the selected provider needs a key and available quota. OpenAI credit errors stop an OpenAI run; the script never switches to the other provider. Use `--voice-dir` for existing WAV narration or `--silent` for a preview without speech.
+
+The output is `videos\<job-id>\final.mp4`. Blender shadow-buffer limits are recorded as warnings in `manifest.json`; some shadows may be missing, but assembly continues when frames are complete. Other reported render errors and missing or empty frames still stop the job, and the completed MP4 is checked by decoding it locally.
+
+#### Use multiple AI providers
+
+Select Gemini or OpenAI for all AI steps with `--provider`. Other planner providers require `--voice-dir` or `--silent` and disabled AI images.
+
+Each video can optionally include a topic-related AI background image. It uses the selected provider while the trusted Blender diagrams remain in front; the image receives a subtle animated zoom. Add these settings to `.env`:
+
+```env
+TOPIC_IMAGE_PROVIDER=auto
 TOPIC_IMAGE_API_KEY=your-openai-image-key
 TOPIC_IMAGE_MODEL=gpt-image-1
 ```
@@ -75,7 +175,7 @@ GEMINI_MODEL=gemini-3.5-flash
 GEMINI_FALLBACK_MODEL=gemini-flash-lite-latest
 ```
 
-When both providers are configured, planning tries Gemini first. Credit, quota, rate-limit, timeout, and connectivity failures automatically retry with the fallback Gemini model and then OpenAI. A model that returns invalid storyboard content is reported for correction instead of silently switching providers.
+The CLI never switches providers. Gemini may retry its configured fallback Gemini model on transient provider errors. A model that returns invalid storyboard content is reported for correction instead of silently switching providers.
 
 Generate and validate a Gemini storyboard:
 
@@ -88,7 +188,7 @@ Render it with OpenAI narration:
 
 ```powershell
 # Put OPENAI_API_KEY in .env before running this command.
-.\.venv\Scripts\python.exe science_video_generator.py generate --storyboard examples\gemini_story.json --resolution 480 --fast --topic-image openai
+.\.venv\Scripts\python.exe science_video_generator.py generate --provider openai --storyboard examples\gemini_story.json --resolution 480 --fast --topic-image none
 ```
 
 On PowerShell, set `OPENAI_API_KEY` in `.env` instead of placing it on the command line. To use another narrator, use recorded audio or Edge TTS:
@@ -274,7 +374,7 @@ Failed jobs retain artifacts. Retry by rerunning the command (a new job is creat
 .\.venv\Scripts\python.exe science_video_generator.py queue daily --provider gemini --fast --resolution 1080 --duration 120
 ```
 
-`queue daily` selects the next unused topic from the AI, machine learning, data science, Python, and coding series, asks the configured planner to create a validated 2-minute storyboard, renders one animated video, uploads it to YouTube, and keeps only the two newest completed jobs. It also writes `social_metadata.json` containing the hook, CTA, and hashtags. Automatic upload requires YouTube OAuth setup (`publish login-youtube`) and a production render of at least 1080 × 1920. Use `--duration 180` for 3-minute videos, `--no-upload` for local-only renders, or `--resolution 320` for a small 320 × 568 video. For Gemini planning with AI narration, configure both `GEMINI_API_KEY` and `OPENAI_API_KEY`; use `--silent` or `--voice-dir` if you do not want OpenAI TTS.
+`queue daily` selects the next unused topic from the AI, machine learning, data science, Python, and coding series, asks the configured planner to create a validated 2-minute storyboard, renders one animated video, uploads it to YouTube, and keeps only the two newest completed jobs. It also writes `social_metadata.json` containing the hook, CTA, and hashtags. Automatic upload requires YouTube OAuth setup (`publish login-youtube`) and a production render of at least 1080 × 1920. Use `--duration 180` for 3-minute videos, `--no-upload` for local-only renders, or `--resolution 320` for a small 320 × 568 video. For a Gemini-only run, configure `GEMINI_API_KEY`; OpenAI credentials are not used.
 
 Daily YouTube uploads are public by default. Set `YOUTUBE_VISIBILITY=private` or `unlisted` in `.env` when testing.
 
