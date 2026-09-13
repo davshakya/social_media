@@ -64,6 +64,12 @@ def test_render_frames_require_complete_nonempty_sequence(tmp_path):
         check_render_frames(tmp_path, 2)
 
 
+def test_render_progress_bar_is_bounded_and_informative():
+    from science_video.pipeline import render_progress_bar
+    assert render_progress_bar(15, 10).endswith("100% (10/10 frames)")
+    assert "0% (0/10 frames)" in render_progress_bar(-1, 10)
+
+
 def test_narration_explains_openai_credit_failure(tmp_path, monkeypatch):
     import httpx
     import openai

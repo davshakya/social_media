@@ -374,9 +374,16 @@ Failed jobs retain artifacts. Retry by rerunning the command (a new job is creat
 .\.venv\Scripts\python.exe science_video_generator.py queue daily --provider gemini --fast --resolution 1080 --duration 120
 ```
 
-`queue daily` selects the next unused topic from the AI, machine learning, data science, Python, and coding series, asks the configured planner to create a validated 2-minute storyboard, renders one animated video, uploads it to YouTube, and keeps only the two newest completed jobs. It also writes `social_metadata.json` containing the hook, CTA, and hashtags. Automatic upload requires YouTube OAuth setup (`publish login-youtube`) and a production render of at least 1080 × 1920. Use `--duration 180` for 3-minute videos, `--no-upload` for local-only renders, or `--resolution 320` for a small 320 × 568 video. For a Gemini-only run, configure `GEMINI_API_KEY`; OpenAI credentials are not used.
+`queue daily` selects the next unused topic from the AI, machine learning, data science, Python, and coding series, asks the configured planner to create a validated 2-minute storyboard, renders one animated video, and keeps only the two newest completed jobs. It also writes `social_metadata.json` containing the hook, CTA, and hashtags. It publishes to YouTube by default; use `--platform instagram`, `--platform facebook`, or `--platform all` to select Meta destinations. Automatic publishing requires the relevant account setup and a production render of at least 1080 × 1920. Use `--duration 180` for 3-minute videos, `--no-upload` for local-only renders, or `--resolution 320` for a small 320 × 568 video. For a Gemini-only run, configure `GEMINI_API_KEY`; OpenAI credentials are not used.
 
 Daily YouTube uploads are public by default. Set `YOUTUBE_VISIBILITY=private` or `unlisted` in `.env` when testing.
+
+To publish a daily video automatically to Facebook and Instagram too, use `--platform all`. This verifies all selected accounts before the first upload, so an unconfigured Meta account cannot result in a YouTube-only partial post. The included `scripts/run_daily.ps1` already uses this option. Configure and verify the Meta Page token first:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py publish check --online --platform facebook
+.\.venv\Scripts\python.exe science_video_generator.py publish check --online --platform instagram
+```
 
 To generate a 3-minute daily video manually:
 
@@ -462,7 +469,7 @@ Remove it when needed:
 schtasks.exe /Delete /TN "Social Media Daily Video" /F
 ```
 
-The script reads `.env`, uses `AI_PLANNER_PROVIDER` to choose the planner, uploads each successful production video to YouTube, and writes jobs under `videos\`. Complete YouTube login once before enabling the task:
+The script reads `.env`, uses `AI_PLANNER_PROVIDER` to choose the planner, posts each successful production video to YouTube, Facebook, and Instagram, and writes jobs under `videos\`. Complete YouTube login and the Meta checks above before enabling the task:
 
 ```powershell
 .\.venv\Scripts\python.exe science_video_generator.py publish login-youtube

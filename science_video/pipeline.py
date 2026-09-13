@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -9,6 +10,31 @@ from uuid import uuid4
 from .audio import narration, soundtrack
 from .captions import write_captions
 from .runtime import executable, run
+
+
+def render_progress_bar(frame, total, width=24):
+    """Return a compact, terminal-safe render progress bar."""
+    frame = min(max(0, frame), total)
+    filled = round(width * frame / total) if total else width
+    return f"[{'#' * filled}{'-' * (width - filled)}] {frame / total:.0%} ({frame}/{total} frames)" if total else "[########################] 100%"
+
+
+def blender_progress(total_frames):
+    """Create a callback that turns Blender's frame messages into one progress bar."""
+    last_frame = -1
+
+    def update(line):
+        nonlocal last_frame
+        match = re.search(r"\bFra:(\d+)", line)
+        if not match:
+            return
+        frame = int(match.group(1))
+        if frame == last_frame:
+            return
+        last_frame = frame
+        print("\rRendering " + render_progress_bar(frame, total_frames), end="", flush=True)
+
+    return update
 
 
 def resolve_image_provider(provider, requested=None):
@@ -190,6 +216,7 @@ def generate(story, output=Path("videos"), *, preview=False, silent=False, voice
                        recorded=voice_dir is not None)
         soundtrack(folder, timeline, story.duration)
         print(f"Rendering Blender scenes ({width}×{height}, {fps} fps). Blender output follows:", flush=True)
+        total_frames = round(story.duration * fps)
         render_threads = max(1, (os.cpu_count() or 1) // workers)
         cmd = [blender, "--background", "--factory-startup", "--disable-autoexec", "--threads",
                str(render_threads), "--python-exit-code", "1",
@@ -197,7 +224,15 @@ def generate(story, output=Path("videos"), *, preview=False, silent=False, voice
         if still:
             cmd.append("--still")
         if workers == 1:
-            run(cmd, log=folder / "blender.log", live=True)
+            progress = blender_progress(total_frames)
+            try:
+                # A separate Blender process per scene avoids the Windows
+                # Blender 4.5 background renderer corrupting later scenes.
+                for index in range(len(timeline)):
+                    run(cmd + ["--scene-index", str(index)], log=folder / "blender.log",
+                        line_callback=progress)
+            finally:
+                print(flush=True)
         else:
             def render_scene(index):
                 scene_log = folder / f"blender-{index + 1:02d}.log"

@@ -77,7 +77,9 @@ def parser():
     daily.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
                        help="AI provider; defaults to AI_PLANNER_PROVIDER")
     daily.add_argument("--model", help="Planner model; defaults to AI_PLANNER_MODEL")
-    daily.add_argument("--no-upload", action="store_true", help="Render locally without automatic YouTube upload")
+    daily.add_argument("--no-upload", action="store_true", help="Render locally without automatic publishing")
+    daily.add_argument("--platform", choices=("youtube", "instagram", "facebook", "all"), default="youtube",
+                       help="Destination for automatic publishing; default: youtube")
     render_options(daily, duration_default="120")
     schedule = actions.add_parser("schedule", help="Add the next educational series topics to the daily queue")
     schedule.add_argument("--days", type=int, default=1, help="Number of daily topics to add")
@@ -227,11 +229,12 @@ def main(argv=None):
                             upload_report = None
                             if args.action == "daily" and not args.no_upload:
                                 from .publishing import publish_job, prune_completed_jobs
-                                upload_report = publish_job(video, platform="youtube")
+                                platforms = ("youtube", "instagram", "facebook") if args.platform == "all" else (args.platform,)
+                                upload_report = publish_job(video, platforms=platforms)
                             queue.finish(row["id"], output=video)
                             if upload_report is not None:
                                 removed = prune_completed_jobs(args.output, keep=2)
-                                print(json.dumps({"youtube": upload_report,
+                                print(json.dumps({"publishing": upload_report,
                                                   "removed_jobs": [str(path) for path in removed]},
                                                  ensure_ascii=False, indent=2))
                             print(video)

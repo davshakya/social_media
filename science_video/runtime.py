@@ -27,17 +27,20 @@ def executable(name: str) -> str:
     raise ValueError(f"{name} not found. Install it or set {name.upper()}_PATH in .env.")
 
 
-def run(args, *, cwd=None, log: Path | None = None, live=False):
+def run(args, *, cwd=None, log: Path | None = None, live=False, line_callback=None):
     if log:
         with log.open("a", encoding="utf-8") as stream:
-            if live:
+            if live or line_callback:
                 process = subprocess.Popen([str(a) for a in args], cwd=cwd, stdout=subprocess.PIPE,
                                            stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                                            errors="replace", bufsize=1)
                 for line in process.stdout:
                     stream.write(line)
                     stream.flush()
-                    print(line, end="", flush=True)
+                    if line_callback:
+                        line_callback(line)
+                    elif live:
+                        print(line, end="", flush=True)
                 result = subprocess.CompletedProcess(args, process.wait())
             else:
                 result = subprocess.run([str(a) for a in args], cwd=cwd, stdout=stream,

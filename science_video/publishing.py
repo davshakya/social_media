@@ -180,19 +180,20 @@ def publish(video, platforms=PLATFORMS, *, title=None, description=None, tags=No
     return send(package, platforms, output / "uploads.sqlite3")
 
 
-def publish_job(video, *, platform="youtube"):
-    """Publish generated job metadata and return the tracked upload report."""
+def publish_job(video, *, platforms=("youtube",)):
+    """Publish a generated job to the selected, already configured platforms."""
     video = Path(video).resolve()
     metadata_path = video.parent / "social_metadata.json"
     if not metadata_path.is_file():
         raise ValueError(f"Generated job metadata not found: {metadata_path}")
     metadata = Metadata.model_validate_json(metadata_path.read_text(encoding="utf-8-sig"))
-    report = publish(video, (platform,), title=metadata.title, description=metadata.description,
+    report = publish(video, platforms, title=metadata.title, description=metadata.description,
                      tags=metadata.tags, visibility=metadata.youtube_visibility,
                      made_for_kids=metadata.made_for_kids, allow_low_resolution=True)
-    result = report.get(platform, {})
-    if "error" in result:
-        raise RuntimeError(f"{platform} upload failed: {result['error']}")
+    failed = {platform: result["error"] for platform, result in report.items() if "error" in result}
+    if failed:
+        details = "; ".join(f"{platform}: {error}" for platform, error in failed.items())
+        raise RuntimeError(f"Automatic publishing failed: {details}")
     return report
 
 

@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 import random
+import shutil
 import sys
 
 import bpy
@@ -131,12 +132,6 @@ def setup_camera(camera_type, start, end, molecules=False):
     target = (0, 0, 1.3)
     cam.location = (0, -10, 4.0 if not molecules else 2.5)
     aim(cam, target)
-    cam.keyframe_insert(data_path="location", frame=start)
-    cam.keyframe_insert(data_path="rotation_euler", frame=start)
-    cam.location.x = 0.35
-    aim(cam, target)
-    cam.keyframe_insert(data_path="location", frame=end)
-    cam.keyframe_insert(data_path="rotation_euler", frame=end)
 
 
 def setup_lighting():
@@ -341,6 +336,12 @@ def build_scene(spec, settings):
         raise ValueError(f"Unsupported action: {action}")
     setup_camera(spec["camera"], start, end, action in {"show_water_molecules", "compare_density", "show_code", "show_data_chart", "show_neural_network", "show_algorithm_steps"})
     setup_lighting()
+    # Blender 4.5 can render keyframed scene objects black after the first frame
+    # in background animation mode on this Windows build. Keep the generated
+    # diagrams static until that renderer issue is resolved; captions, audio,
+    # and scene changes still provide the video timing and progression.
+    for obj in scene.objects:
+        obj.animation_data_clear()
     scene.frame_start, scene.frame_end = start, end
     scene.frame_set(start)
     return scene
@@ -366,7 +367,18 @@ def main():
             scene.render.filepath = str(folder / f"still-{i+1:02d}.png")
             bpy.ops.render.render(write_still=True)
         else:
-            bpy.ops.render.render(animation=True)
+            # Blender 4.5 on this Windows build corrupts every animation frame
+            # after the first one in a background process. A fresh scene still
+            # is reliable, so render one clear visual per storyboard scene and
+            # hold it for that scene's narrated duration.
+            scene.frame_set((spec["start_frame"] + spec["end_frame"]) // 2)
+            still_folder = folder / "rendered-scenes"
+            still_folder.mkdir(exist_ok=True)
+            still_path = still_folder / f"scene-{i+1:02d}.png"
+            scene.render.filepath = str(still_path)
+            bpy.ops.render.render(write_still=True)
+            for frame in range(spec["start_frame"], spec["end_frame"] + 1):
+                shutil.copy2(still_path, folder / "frames" / f"frame_{frame:04d}.png")
 
 
 if __name__ == "__main__":
