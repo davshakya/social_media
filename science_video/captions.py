@@ -27,14 +27,14 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,{font},66,&H00FFFFFF,&H00FFFFFF,&H0024190D,&H9024190D,-1,0,0,0,100,100,0,0,1,3,1,2,70,70,230,1
-Style: Brand,{font},29,&H00DFD1A3,&H00FFFFFF,&H0024190D,&H0024190D,0,0,0,0,100,100,0,0,1,1,0,8,30,30,95,1
+Style: Title,{font},72,&H00FFFFFF,&H00FFFFFF,&H00140F25,&H9C140F25,-1,0,0,0,100,100,0,0,1,5,2,2,70,70,210,1
+Style: Brand,{font},30,&H00E5FFF9,&H00FFFFFF,&H00140F25,&H80140F25,-1,0,0,0,100,100,1,0,1,2,1,8,30,30,88,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     label = "SILENT PREVIEW" if silent else ("RECORDED VOICE" if recorded else "AI VOICE")
-    events = [f"Dialogue: 0,0:00:00.00,{stamp(total_duration, True)},Brand,,0,0,0,,SCIENCE IN {round(total_duration)} SEC - {label}"]
+    events = [f"Dialogue: 0,0:00:00.00,{stamp(total_duration, True)},Brand,,0,0,0,,TECHGYAAN  •  QUICK EXPLAINER  •  {label}"]
     srt = []
     for number, scene in enumerate(timeline, start=1):
         start = scene["start"]

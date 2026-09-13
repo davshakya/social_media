@@ -267,16 +267,24 @@ def add_cli(sub):
     check.add_argument("--online", action="store_true", help="Read authenticated account identities; does not upload")
     check.add_argument("--platform", choices=(*PLATFORMS, "all"), default="all")
     actions.add_parser("login-youtube")
+    def add_direct_options(parser, *, video_argument=False, automatic_metadata=False):
+        if video_argument:
+            parser.add_argument("video", type=Path)
+        parser.add_argument("--platform", choices=(*PLATFORMS, "all"), default="all")
+        parser.add_argument("--title", required=not automatic_metadata,
+                            help="Optional for 'latest': defaults to the video's topic")
+        parser.add_argument("--description", required=not automatic_metadata,
+                            help="Optional for 'latest': defaults to hook, CTA, and hashtags from the video")
+        parser.add_argument("--visibility", choices=("private", "unlisted", "public"), default="private")
+        parser.add_argument("--made-for-kids", choices=("yes", "no"), required=True)
+        parser.add_argument("--allow-silent", action="store_true")
+        parser.add_argument("--allow-low-resolution", action="store_true",
+                            help="Allow 320p/480p input; the upload package is still encoded at 1080p")
+
     direct = actions.add_parser("video", help="Prepare and publish a finished video in one command")
-    direct.add_argument("video", type=Path)
-    direct.add_argument("--platform", choices=(*PLATFORMS, "all"), default="all")
-    direct.add_argument("--title", required=True)
-    direct.add_argument("--description", required=True)
-    direct.add_argument("--visibility", choices=("private", "unlisted", "public"), default="private")
-    direct.add_argument("--made-for-kids", choices=("yes", "no"), required=True)
-    direct.add_argument("--allow-silent", action="store_true")
-    direct.add_argument("--allow-low-resolution", action="store_true",
-                        help="Allow 320p/480p input; the upload package is still encoded at 1080p")
+    add_direct_options(direct, video_argument=True)
+    latest = actions.add_parser("latest", help="Automatically select the newest completed final.mp4 and publish it")
+    add_direct_options(latest, automatic_metadata=True)
     prep = actions.add_parser("prepare", help="Encode a local, reviewable upload package; no upload")
     prep.add_argument("video", type=Path)
     prep.add_argument("--metadata", type=Path, required=True)
@@ -296,8 +304,15 @@ def add_cli(sub):
 
 def run_cli(args):
     action = args.publish_action
-    if action == "video":
-        result = publish(args.video, selected(args.platform), title=args.title, description=args.description,
+    if action in ("video", "latest"):
+        video = args.video if action == "video" else latest_completed_video()
+        if action == "latest":
+            print(f"Selected latest completed video: {video}")
+            generated = latest_post_text(video)
+            args.title = args.title or generated["title"]
+            args.description = args.description or generated["description"]
+            print(f"Using title: {args.title}")
+        result = publish(video, selected(args.platform), title=args.title, description=args.description,
                          visibility=args.visibility, made_for_kids=args.made_for_kids == "yes",
                          allow_silent=args.allow_silent, allow_low_resolution=args.allow_low_resolution)
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -345,3 +360,32 @@ def run_cli(args):
         finally:
             ledger.close()
     return 0
+
+
+def latest_completed_video():
+    """Return the most recently modified completed render without guessing partial jobs."""
+    candidates = []
+    for manifest in (ROOT / "videos").glob("*/manifest.json"):
+        video = manifest.parent / "final.mp4"
+        try:
+            job = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if job.get("status") == "complete" and not job.get("preview") and video.is_file():
+            candidates.append(video)
+    if not candidates:
+        raise ValueError("No completed production final.mp4 found in videos/.")
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def latest_post_text(video):
+    """Build sensible post text from the completed job's saved storyboard metadata."""
+    manifest = Path(video).parent / "manifest.json"
+    job = json.loads(manifest.read_text(encoding="utf-8"))
+    title = str(job.get("topic") or "TechGyaan quick explainer").strip()
+    parts = [str(job.get(key) or "").strip() for key in ("hook", "cta")]
+    tags = [str(tag).strip().lstrip("#") for tag in job.get("hashtags", []) if str(tag).strip()]
+    description = "\n\n".join(part for part in parts if part)
+    if tags:
+        description = (description + "\n\n" if description else "") + " ".join(f"#{tag}" for tag in tags)
+    return {"title": title[:100], "description": description or title}

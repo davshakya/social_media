@@ -56,6 +56,36 @@ Each job writes `blender.log` and `ffmpeg.log` in its job folder. Watch Blender 
 
 Use `generate --type image`, `--type video` (the default), or `--type both`.
 
+#### Open ChatGPT to create a storyboard manually
+
+Install the optional visible-browser launcher, then run it. It opens ChatGPT for you to sign in and use manually; it does not read passwords, export browser data, or submit prompts automatically. Copy the generated JSON into a local storyboard file and use `generate --storyboard`.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[chatgpt-ui]"
+.\.venv\Scripts\python.exe scripts\open_chatgpt.py
+```
+
+Paste a webpage-created storyboard into [examples/storyboard.json](examples/storyboard.json), replacing the sample JSON. Then validate and render it without an AI API call:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py validate examples\storyboard.json
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+  --type video `
+  --storyboard examples\storyboard.json `
+  --local-voice `
+  --topic-image local `
+  --resolution 720 `
+  --fast
+```
+
+The pasted file must be valid JSON and use only these scene actions: `show_glass_water_ice`, `zoom_into_ice`, `show_water_molecules`, `compare_density`, `return_to_glass`, `show_oil_water`, `show_code`, `show_data_chart`, `show_neural_network`, or `show_algorithm_steps`.
+
+| Argument | Output |
+| --- | --- |
+| `--type image` | One standalone `topic_image.png`; no narration, Blender render, or MP4. |
+| `--type video` | One narrated `final.mp4`; this is the default. |
+| `--type both` | Both `topic_image.png` and `final.mp4`; the image is also used as the video background. |
+
 ```powershell
 # Image only: entirely local, no storyboard planning or speech needed.
 .\.venv\Scripts\python.exe science_video_generator.py generate --type image --topic "How Python dictionaries work" --topic-image local
@@ -69,7 +99,69 @@ Use `generate --type image`, `--type video` (the default), or `--type both`.
 
 Replace the storyboard and voice paths with your files. Use `--silent` instead of `--voice-dir` for a video without speech. Image-only output skips narration, Blender, and FFmpeg; omit `--topic` to select an unused topic automatically. `image` and `both` default to local images; choose `--provider gemini --topic-image auto` for AI images. New video storyboards and AI speech still require the selected provider's API.
 
+To have Gemini create a new random storyboard only, save it to the reusable generic file:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py plan --random --provider gemini --out examples\storyboard.json
+```
+
+The random topic is selected locally from unused catalog topics. Gemini receives one request only to write the storyboard; then render `examples\storyboard.json` with `--storyboard`, `--local-voice`, and `--topic-image local`.
+
+Or combine both steps. This saves the generated storyboard to `examples\storyboard.json` and immediately renders the video:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate --type video --random-storyboard --provider gemini --local-voice --topic-image local --resolution 720 --fast
+```
+
+Every AI-planned video generation also saves its new storyboard to `examples\storyboard.json` automatically. For a chosen topic, use:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate --type video --topic "How do percentages work?" --provider gemini --local-voice --topic-image local --resolution 720 --fast
+```
+
+To use OpenAI only for creating the storyboard while generating narration with Edge TTS and visuals locally, use `--provider openai --local-voice --topic-image local`:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py generate `
+  --type video `
+  --topic "How can you protect private data when using AI tools?" `
+  --provider openai `
+  --local-voice `
+  --topic-image local `
+  --resolution 720 `
+  --fast
+```
+
+`--local-voice` uses Edge TTS, which needs an internet connection but does not call the OpenAI or Gemini speech APIs.
+
+#### Publish a finished video
+
+After reviewing the generated `final.mp4`, publish it directly to Facebook and Instagram (or use `--platform all` to include YouTube). Meta publishing requires the Page token and connected professional Instagram account described in [PUBLISHING.md](PUBLISHING.md).
+
+```powershell
+# Verify the connected Meta accounts first; this does not upload anything.
+.\.venv\Scripts\python.exe science_video_generator.py publish check --online --platform facebook
+.\.venv\Scripts\python.exe science_video_generator.py publish check --online --platform instagram
+
+# Publish the reviewed video as a Facebook Reel and Instagram Reel.
+.\.venv\Scripts\python.exe science_video_generator.py publish video videos\YOUR-JOB-ID\final.mp4 `
+  --platform facebook `
+  --title "What is a neural network neuron?" `
+  --description "A quick explanation of how neural-network neurons work. #AI #MachineLearning" `
+  --made-for-kids no
+
+.\.venv\Scripts\python.exe science_video_generator.py publish video videos\YOUR-JOB-ID\final.mp4 `
+  --platform instagram `
+  --title "What is a neural network neuron?" `
+  --description "A quick explanation of how neural-network neurons work. #AI #MachineLearning" `
+  --made-for-kids no
+```
+
+Use `--platform all` instead of `facebook` or `instagram` only after YouTube is connected too. The publisher records completed uploads and prevents duplicate reposts of the same video.
+
 Each run creates its own folder under `videos` (or `--output`). Image-only jobs save `topic_image.png` and report `image_complete` in `manifest.json`. Both jobs save `topic_image.png` and `final.mp4`; if image generation fails, the job reports failure rather than claiming both outputs succeeded. `--type video` preserves optional background-image settings; use `--topic-image none` to avoid a separate PNG. `--still` is a separate diagnostic mode and cannot be combined with `--type image` or `both`.
+
+For any curated catalog topic, a local image-only job also creates `lesson_cards/`: four 1080 × 1350 explanatory carousel images covering the definition, mechanism, example, and takeaway. Python topics include `05_python_question.png` and `06_python_answer.png` for a ready-to-post code quiz and explanation. These assets use no image-generation API.
 
 #### Local topic images without AI credits
 
@@ -327,6 +419,12 @@ Publish a completed production render. YouTube visibility can be `public`, `priv
 ```powershell
 .\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform youtube --title "Science video" --description "Hindi science short" --visibility private --made-for-kids no
 .\.venv\Scripts\python.exe science_video_generator.py publish video videos\<job-id>\final.mp4 --platform all --title "Science video" --description "Hindi science short" --visibility private --made-for-kids no
+```
+
+To select the newest completed production video automatically, use `publish latest`. It skips incomplete and preview jobs and gets the title, hook, CTA, and hashtags from its `manifest.json`. The audience declaration remains required:
+
+```powershell
+.\.venv\Scripts\python.exe science_video_generator.py publish latest --platform youtube --visibility unlisted --made-for-kids no
 ```
 
 Use `--platform youtube`, `instagram`, `facebook`, or `all`. Title, description, and audience declaration are required. Any valid vertical production resolution is preserved during upload. Preview jobs are rejected:

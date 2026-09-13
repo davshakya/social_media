@@ -1,0 +1,52 @@
+{
+  "topic": "English grammar tenses",
+  "language": "Hinglish",
+  "duration": 30,
+  "scenes": [
+    {
+      "duration": 6.0,
+      "action": "show_grammar_tense",
+      "camera": "medium",
+      "narration": "English grammar में tense हमें बताता है कि कोई action कब हुआ।",
+      "caption": "What is tense in English grammar?"
+    },
+    {
+      "duration": 6.0,
+      "action": "show_grammar_tense",
+      "camera": "close",
+      "narration": "Present tense का मतलब है जो अभी हो रहा है, जैसे I study grammar.",
+      "caption": "Present tense: Actions happening now"
+    },
+    {
+      "duration": 6.0,
+      "action": "show_grammar_tense",
+      "camera": "close",
+      "narration": "Past tense दिखाता है जो पहले ही बीत चुका है, जैसे I studied yesterday.",
+      "caption": "Past tense: Actions that already happened"
+    },
+    {
+      "duration": 6.0,
+      "action": "show_grammar_tense",
+      "camera": "close",
+      "narration": "Future tense उस action को दर्शाता है जो आगे होगा, जैसे I will study.",
+      "caption": "Future tense: Actions that will happen"
+    },
+    {
+      "duration": 6.0,
+      "action": "show_grammar_tense",
+      "camera": "medium",
+      "narration": "तो verb का form बदलकर आप tense को आसानी से master कर सकते हैं।",
+      "caption": "Master tenses by changing verb forms"
+    }
+  ],
+  "hook": "Tense Rules Made Simple!",
+  "cta": "Subscribe for more grammar tips!",
+  "hashtags": [
+    "#EnglishGrammar",
+    "#LearnEnglish",
+    "#Tenses",
+    "#GrammarRules",
+    "#SpokenEnglish",
+    "#EnglishLearning"
+  ]
+}

@@ -8,6 +8,43 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 
+def create_lesson_cards(topic, destination):
+    """Create a four-card local image carousel for a catalog lesson."""
+    from .topic_lessons import lesson_for
+    from .infographic import render_lesson_card
+
+    lesson = lesson_for(topic)
+    if not lesson:
+        return []
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    palette = [(73, 214, 188), (101, 181, 255), (187, 152, 255), (255, 191, 105)]
+    background = Image.new("RGB", (1080, 1350), "#101827")
+    draw = ImageDraw.Draw(background)
+    for y in range(0, 1350, 64):
+        draw.line((0, y, 1080, y), fill="#17283e", width=1)
+    labels = ("WHAT IT IS", "HOW IT WORKS", "PRACTICAL EXAMPLE", "REMEMBER")
+    cards = []
+    for index, (label, content) in enumerate(zip(labels, lesson)):
+        card = render_lesson_card(background, topic, label, content, index, palette)
+        path = destination / f"{index + 1:02d}_{label.lower().replace(' ', '_')}.png"
+        card.save(path, format="PNG")
+        cards.append(path)
+    if "python" in topic.casefold():
+        snippet = "items = [10, 20, 30]\nprint(items[-1])"
+        question = render_lesson_card(background, "Python code question", "PREDICT THE OUTPUT",
+                                      "What does this code print? Think about negative indexes before checking the answer.",
+                                      0, palette, code=snippet)
+        answer = render_lesson_card(background, "Python code answer", "EXPLANATION",
+                                    "It prints 30. Index -1 selects the final item in a Python list.",
+                                    1, palette, code="Output: 30")
+        for name, card in (("05_python_question.png", question), ("06_python_answer.png", answer)):
+            path = destination / name
+            card.save(path, format="PNG")
+            cards.append(path)
+    return cards
+
+
 def create_image(topic, destination, *, standalone=False):
     """Draw a text-free background; captions remain the source of explanations."""
     seed = secrets.randbits(64)

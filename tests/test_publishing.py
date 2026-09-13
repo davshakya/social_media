@@ -18,7 +18,11 @@ def test_cli_has_one_publishing_namespace():
     from science_video.cli import parser
     assert parser().parse_args(["publish", "check"]).publish_action == "check"
     assert parser().parse_args(["publish", "send", "post.json", "--platform", "all"]).platform == "all"
+    latest = parser().parse_args(["publish", "latest", "--platform", "youtube", "--made-for-kids", "no"])
+    assert latest.publish_action == "latest"
+    assert latest.title is None and latest.description is None
     assert parser().parse_args(["queue", "daily", "--platform", "all"]).platform == "all"
+    assert parser().parse_args(["generate", "--local-voice"]).local_voice is True
 
 
 @pytest.mark.parametrize("info", [

@@ -7,7 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Action = Literal["show_glass_water_ice", "zoom_into_ice", "show_water_molecules",
                  "compare_density", "return_to_glass", "show_oil_water", "show_code",
-                 "show_data_chart", "show_neural_network", "show_algorithm_steps"]
+                 "show_data_chart", "show_neural_network", "show_algorithm_steps", "show_grammar_tense",
+                 "show_math_concept"]
 
 
 class Scene(BaseModel):
@@ -51,6 +52,33 @@ class Storyboard(BaseModel):
     def write(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.model_dump_json(indent=2), encoding="utf-8")
+
+
+def check_topic_consistency(story: Storyboard, requested_topic: str):
+    """Reject planner output that crosses into an unrelated rendered topic.
+
+    The local renderer intentionally has a small action vocabulary.  In
+    particular, ``show_code`` displays a Python-code panel, so using it for an
+    LLM's generated response silently teaches the wrong thing.
+    """
+    requested = requested_topic.casefold()
+    all_text = " ".join(
+        f"{scene.narration} {scene.caption}" for scene in story.scenes
+    ).casefold()
+    actions = {scene.action for scene in story.scenes}
+    if any(term in requested for term in ("large language model", "language model", "llm")):
+        forbidden = ("python backend", "python code", "git", "database backend", "real meaning")
+        if any(term in all_text for term in forbidden):
+            raise ValueError("LLM storyboard mixes an unrelated topic or contains an unsupported claim.")
+        incompatible = actions - {"show_neural_network", "show_algorithm_steps"}
+        if incompatible:
+            raise ValueError(
+                "LLM storyboard uses an incompatible local visual: "
+                + ", ".join(sorted(incompatible))
+            )
+        if "token" not in all_text or not any(term in all_text for term in ("next token", "next word", "probability", "predict")):
+            raise ValueError("LLM storyboard must explain tokens and next-token prediction.")
+    return story
 
 
 def demo_storyboard():
@@ -126,7 +154,7 @@ def _plan_gemini(topic, model, api_key, system_prompt, duration):
         parsed = Storyboard.model_validate_json(text)
         if parsed.duration != duration:
             raise ValueError(f"Planner returned {parsed.duration} seconds; expected {duration} seconds.")
-        return parsed
+        return check_topic_consistency(parsed, topic)
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise ValueError(f"Gemini returned an invalid storyboard: {exc}") from exc
 
@@ -159,7 +187,7 @@ def _plan_openai(topic, model, api_key, system_prompt, duration, *, base_url=Non
         raise ValueError("Planner refused or returned no valid storyboard.")
     if parsed.duration != duration:
         raise ValueError(f"Planner returned {parsed.duration} seconds; expected {duration} seconds.")
-    return parsed
+        return check_topic_consistency(parsed, topic)
 
 
 def plan(topic: str, *, provider=None, model=None, duration=30, _allow_fallback=True):
@@ -177,21 +205,24 @@ def plan(topic: str, *, provider=None, model=None, duration=30, _allow_fallback=
     selected_model = model or os.getenv("AI_PLANNER_MODEL") or (
         os.getenv("GEMINI_MODEL", "gemini-3.5-flash") if provider == "gemini" else os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
     system_prompt = (
-            f"Write an accurate Hinglish technology or science short, exactly {duration} seconds. "
+            f"Write an accurate Hinglish technology, science, English-grammar, or mathematics short, exactly {duration} seconds. "
             "Use approximately 2 spoken words per second and make the explanation practical, engaging, and easy to understand. "
             "Use 4-8 scenes. Every narration scene MUST contain actual Devanagari Hindi characters such as यह, है, or क्यों, mixed naturally with familiar English science words in Latin script. Do not write any scene narration entirely in English. "
             "such as Ice, water, density, molecules, mass, volume, or float. Do not transliterate English terms into Devanagari. "
             "Every caption is visible on the video: it must be English-only ASCII, short, clear, and at most 55 characters. "
             f"Never include Hindi, Devanagari, emojis, or non-English symbols in captions. Scene durations must sum to {duration}. "
-            "For technology topics, narration must include natural Devanagari Hindi plus English terms such as model, data, code, feature, or Python. "
-            "The supported visual topics are ice floating, water molecules, density, oil/water separation, Python code, data charts, neural networks, and algorithm steps. "
+            "For technology topics, narration must include natural Devanagari Hindi plus the English technical terms that belong to the requested topic only. "
+            "The supported visual topics are ice floating, water molecules, density, oil/water separation, Python code, data charts, neural networks, algorithm steps, English tenses, and mathematics concepts. "
             "For unsupported topics refuse instead of inventing scene actions. "
             "show_water_molecules depicts equal molecule counts, compact liquid versus a schematic open ice lattice; "
             "compare_density depicts water 1.00 and ice 0.917 g/cm3 (approximate near freezing). "
             "show_oil_water depicts static separated oil above water. Do not claim pouring is animated. "
             "All glass actions depict floating ice. Do not use ice actions for oil. "
-            "Use show_code for Python or coding concepts, show_data_chart for data science concepts, "
+            "Use show_code only when the explanation is actually about Python/code. Use show_data_chart only for a real numerical/data relationship, "
             "show_neural_network for AI or machine learning concepts, and show_algorithm_steps for practical coding workflows. "
+            "For an English tense lesson, use show_grammar_tense only: accurately distinguish past, present, and future with short English examples. "
+            "For mathematics lessons such as fractions, percentages, ratios, algebra, arithmetic, or geometry, use show_math_concept only and show the idea as given values, a clear solving step, and a result. Do not invent a numerical answer or use a formula unless it is correct. "
+            "Never mix two topics in one storyboard. For a large language model prompt, use only show_neural_network and show_algorithm_steps: explain prompt to tokens, contextual processing in transformer layers, probability over the next token, and repeated next-token generation. Do not say that a Python backend creates the final text, do not claim embeddings are literal real meaning, and do not use code or chart visuals for this topic. "
             "Include an attention-grabbing hook, a concise call to action, and 4-8 relevant hashtags. "
             "No publishing instructions, code, paths, or external resources.")
     if provider == "gemini":

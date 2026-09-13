@@ -19,6 +19,14 @@ def test_image_only_skips_planning_and_video(tmp_path, monkeypatch):
     assert not list(tmp_path.rglob("*.mp4"))
 
 
+def test_local_catalog_image_creates_explanatory_card_set(tmp_path):
+    result = pipeline.generate_image("What is a Python list, and when should you use one?", tmp_path)
+    cards = list(result.parent.glob("lesson_cards/*.png"))
+    assert len(cards) == 6
+    manifest = json.loads((result.parent / "manifest.json").read_text())
+    assert len(manifest["lesson_cards"]) == 6
+
+
 @pytest.mark.parametrize("kind", ["video", "both"])
 def test_video_output_routes_existing_storyboard(tmp_path, monkeypatch, kind):
     monkeypatch.setattr(cli, "load_dotenv", lambda *a: None)

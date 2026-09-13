@@ -65,7 +65,12 @@ def generate_image(topic, output, *, provider="gemini", image_provider="local", 
         result = generate_topic_image(topic, folder / "topic_image.png", provider=selected, model=model, standalone=True)
         if not result:
             raise ValueError("No image was generated.")
-        manifest.update(status="image_complete", image=result.name)
+        cards = []
+        if selected == "local":
+            from .local_image import create_lesson_cards
+            cards = create_lesson_cards(topic, folder / "lesson_cards")
+        manifest.update(status="image_complete", image=result.name,
+                        lesson_cards=[str(card.relative_to(folder)) for card in cards])
         save()
         return result
     except Exception as exc:
@@ -90,6 +95,27 @@ def check_render_frames(folder, count):
         path = folder / "frames" / f"frame_{index:04d}.png"
         if not path.is_file() or path.stat().st_size == 0:
             raise RuntimeError(f"Missing or empty rendered frame: {path}")
+
+
+def animate_scene_stills(folder, ffmpeg, timeline, width, height, fps):
+    """Turn reliable Blender scene stills into gently moving video frames."""
+    for index, spec in enumerate(timeline):
+        source = folder / "rendered-scenes" / f"scene-{index + 1:02d}.png"
+        if not source.is_file():
+            raise RuntimeError(f"Rendered scene visual is missing: {source}")
+        frame_count = spec["end_frame"] - spec["start_frame"] + 1
+        # Render at 2x then use a pronounced camera push and horizontal drift.
+        # Alternating directions makes each explanatory scene visibly dynamic.
+        drift = f"0.12+0.78*on/{frame_count}" if index % 2 == 0 else f"0.90-0.78*on/{frame_count}"
+        motion = (
+            f"scale={width * 2}:{height * 2},"
+            f"zoompan=z='min(zoom+0.0015,1.32)':"
+            f"x='(iw-iw/zoom)*({drift})':y='(ih-ih/zoom)*(0.35+0.15*sin(on*0.04))':"
+            f"d=1:s={width}x{height}:fps={fps}"
+        )
+        run([ffmpeg, "-y", "-loop", "1", "-framerate", str(fps), "-i", source,
+             "-vf", motion, "-frames:v", str(frame_count), "-start_number", str(spec["start_frame"]),
+             folder / "frames" / "frame_%04d.png"], log=folder / "ffmpeg.log")
 
 
 def hindi_fonts(font_dir):
@@ -146,7 +172,7 @@ def compose(folder, ffmpeg, fps, *, duration=30, music=None, font_dir=None):
         log=folder / "ffmpeg.log")
 
 
-def generate(story, output=Path("videos"), *, preview=False, silent=False, voice_dir=None,
+def generate(story, output=Path("videos"), *, preview=False, silent=False, voice_dir=None, local_voice=False,
              music=None, still=False, resolution=1080, fast=False, workers=1,
              topic_image_provider=None, topic_image_model=None, provider="openai", require_image=False):
     selected_image_provider = resolve_image_provider(provider, topic_image_provider)
@@ -202,6 +228,11 @@ def generate(story, output=Path("videos"), *, preview=False, silent=False, voice
             raise ValueError("Production resolution must be 320, 480, 720, or 1080")
         if workers < 1:
             raise ValueError("--workers must be at least 1")
+        if local_voice:
+            from .hinglish_voice import generate_tracks
+            voice_dir = folder / "edge-voice"
+            print("Narration: Edge TTS local voice tracks. Timing is measured locally.", flush=True)
+            generate_tracks(folder / "storyboard.json", voice_dir)
         narrator = "local silence" if silent else "local WAV files" if voice_dir else f"{provider} TTS"
         print(f"Narration: {narrator}. Timing is measured locally.", flush=True)
         print("Video processing: local Python, Blender, and FFmpeg (animation, captions, music, and assembly).", flush=True)
@@ -257,6 +288,8 @@ def generate(story, output=Path("videos"), *, preview=False, silent=False, voice
         for warning in manifest["render_warnings"]:
             print(f"Warning: {warning}", flush=True)
         if not still:
+            print("Animating scene visuals...", flush=True)
+            animate_scene_stills(folder, ffmpeg, timeline, width, height, fps)
             check_render_frames(folder, round(story.duration * fps))
             print("Adding Hindi captions, music and sound effects...", flush=True)
             compose(folder, ffmpeg, fps, duration=story.duration, music=music, font_dir=font_dir)

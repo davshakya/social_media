@@ -8,7 +8,7 @@ from science_video.captions import safe_ass, stamp, write_captions
 from science_video.hinglish_voice import track_paths
 from science_video.queue import TopicQueue
 from science_video.runtime import executable, run
-from science_video.storyboard import Storyboard, demo_storyboard
+from science_video.storyboard import Storyboard, check_topic_consistency, demo_storyboard
 from science_video.topic_catalog import TOPICS, topic_for_day
 
 
@@ -31,6 +31,24 @@ def test_roundtrip_unicode(tmp_path):
     path = tmp_path / "story.json"
     demo_storyboard().write(path)
     assert Storyboard.read(path) == demo_storyboard()
+
+
+def test_english_tense_visual_action_is_supported():
+    data = demo_storyboard().model_dump()
+    data["scenes"][0]["action"] = "show_grammar_tense"
+    assert Storyboard.model_validate(data).scenes[0].action == "show_grammar_tense"
+
+
+def test_math_visual_action_is_supported():
+    data = demo_storyboard().model_dump()
+    data["scenes"][0]["action"] = "show_math_concept"
+    assert Storyboard.model_validate(data).scenes[0].action == "show_math_concept"
+
+
+def test_llm_storyboard_rejects_mixed_topic_visuals():
+    story = demo_storyboard().model_copy(update={"topic": "What does a large language model do with your prompt?"})
+    with pytest.raises(ValueError, match="incompatible local visual"):
+        check_topic_consistency(story, story.topic)
 
 
 def test_fresh_topics_persist_and_exclude_existing_storyboards(tmp_path, monkeypatch):
@@ -68,6 +86,28 @@ def test_render_progress_bar_is_bounded_and_informative():
     from science_video.pipeline import render_progress_bar
     assert render_progress_bar(15, 10).endswith("100% (10/10 frames)")
     assert "0% (0/10 frames)" in render_progress_bar(-1, 10)
+
+
+def test_captions_use_modern_high_contrast_branding(tmp_path):
+    from science_video.captions import write_captions
+    write_captions(tmp_path, [{"start": 0, "duration": 3, "caption": "Clear caption"}])
+    content = (tmp_path / "captions.ass").read_text(encoding="utf-8-sig")
+    assert "TECHGYAAN  •  QUICK EXPLAINER" in content
+    assert "Style: Title" in content and ",72," in content
+
+
+def test_scene_stills_receive_motion_before_video_composition(tmp_path, monkeypatch):
+    import science_video.pipeline as pipeline
+    source = tmp_path / "rendered-scenes"
+    source.mkdir()
+    (source / "scene-01.png").write_bytes(b"png")
+    calls = []
+    monkeypatch.setattr(pipeline, "run", lambda args, **kwargs: calls.append((args, kwargs)))
+    pipeline.animate_scene_stills(tmp_path, "ffmpeg", [{"start_frame": 1, "end_frame": 30}], 320, 568, 30)
+    args, kwargs = calls[0]
+    assert "zoompan" in args[args.index("-vf") + 1]
+    assert args[args.index("-frames:v") + 1] == "30"
+    assert kwargs["log"] == tmp_path / "ffmpeg.log"
 
 
 def test_narration_explains_openai_credit_failure(tmp_path, monkeypatch):

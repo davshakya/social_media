@@ -26,6 +26,8 @@ def render_options(parser, *, duration_default="30"):
     voice = parser.add_mutually_exclusive_group()
     voice.add_argument("--silent", action="store_true", help="Explicitly render without speech (labeled preview)")
     voice.add_argument("--voice-dir", type=Path, help="Recorded narration: 01.wav, 02.wav, ... one per scene")
+    voice.add_argument("--local-voice", action="store_true",
+                       help="Create narration with Edge TTS instead of the selected AI provider")
     parser.add_argument("--music", type=Path, help="Optional background music; generated music is the default")
 
 
@@ -35,10 +37,17 @@ def parser():
     from .publishing import add_cli
     add_cli(sub)
     sub.add_parser("doctor", help="Check dependencies and API configuration")
+    ppt = sub.add_parser("ppt", help="Create an editable PowerPoint deck from a storyboard")
+    ppt_actions = ppt.add_subparsers(dest="ppt_action", required=True)
+    ppt_create = ppt_actions.add_parser("create")
+    ppt_create.add_argument("storyboard", type=Path)
+    ppt_create.add_argument("--out", type=Path, default=ROOT / "presentations" / "storyboard.pptx")
     demo = sub.add_parser("demo", help="Write the included Hindi ice storyboard (no API)")
     demo.add_argument("--out", type=Path, default=ROOT / "examples" / "ice_float.json")
     planner = sub.add_parser("plan", help="Generate a validated Hindi storyboard using AI")
-    planner.add_argument("topic")
+    planner_source = planner.add_mutually_exclusive_group(required=True)
+    planner_source.add_argument("topic", nargs="?", help="Topic for the storyboard")
+    planner_source.add_argument("--random", action="store_true", help="Choose a fresh local catalog topic, then ask AI only for its storyboard")
     planner.add_argument("--out", type=Path, required=True)
     planner.add_argument("--provider", choices=("openai", "openrouter", "groq", "together", "custom", "gemini"),
                          help="AI provider; defaults to AI_PLANNER_PROVIDER")
@@ -51,6 +60,12 @@ def parser():
     source = generate.add_mutually_exclusive_group()
     source.add_argument("--storyboard", type=Path)
     source.add_argument("--topic")
+    source.add_argument("--random-storyboard", action="store_true",
+                        help="Choose a fresh topic, create its AI storyboard, save it locally, then render")
+    generate.add_argument("--storyboard-out", type=Path, default=ROOT / "examples" / "storyboard.json",
+                          help="Where an AI-planned generate command saves the generated JSON")
+    generate.add_argument("--save-storyboard", action="store_true",
+                          help="Kept for compatibility; AI-planned storyboards are saved automatically")
     generate.add_argument("--still", action="store_true", help="Render one diagnostic image per scene")
     generate.add_argument("--type", choices=("image", "video", "both"), default="video",
                           help="Output to create; image/both default to local images, video preserves existing image settings")
@@ -111,6 +126,10 @@ def main(argv=None):
             except Exception as exc:
                 print(f"Publishing error: {redact_error(exc)}", file=sys.stderr)
                 return 1
+        if args.command == "ppt":
+            from .presentation import create_presentation
+            print(create_presentation(Storyboard.read(args.storyboard), args.out))
+            return 0
         if args.command == "doctor":
             missing = False
             for name in ("blender", "ffmpeg"):
@@ -137,7 +156,12 @@ def main(argv=None):
             story = Storyboard.read(args.storyboard)
             print(f"Valid: {len(story.scenes)} Hinglish scenes with English-only captions, {story.duration} seconds")
         elif args.command == "plan":
-            plan(args.topic, provider=args.provider, model=args.model, duration=int(args.duration)).write(args.out)
+            topic = args.topic
+            if args.random:
+                from .topic_catalog import reserve_fresh_topic
+                topic = reserve_fresh_topic(ROOT / "videos")
+                print(f"New topic: {topic}", flush=True)
+            plan(topic, provider=args.provider, model=args.model, duration=int(args.duration)).write(args.out)
             print(args.out)
         elif args.command == "generate":
             from .pipeline import generate
@@ -159,13 +183,23 @@ def main(argv=None):
                 story = Storyboard.read(args.storyboard)
             else:
                 topic = args.topic
-                if not topic:
+                if args.random_storyboard:
                     from .topic_catalog import reserve_fresh_topic
                     topic = reserve_fresh_topic(args.output)
                     print(f"New topic: {topic}", flush=True)
-                story = plan(topic, provider=args.provider, model=args.model, duration=int(args.duration))
+                    story = plan(topic, provider=args.provider, model=args.model, duration=int(args.duration))
+                    story.write(args.storyboard_out)
+                    print(f"Saved Gemini storyboard: {args.storyboard_out}", flush=True)
+                else:
+                    if not topic:
+                        from .topic_catalog import reserve_fresh_topic
+                        topic = reserve_fresh_topic(args.output)
+                        print(f"New topic: {topic}", flush=True)
+                    story = plan(topic, provider=args.provider, model=args.model, duration=int(args.duration))
+                    story.write(args.storyboard_out)
+                    print(f"Saved AI storyboard: {args.storyboard_out}", flush=True)
             print(generate(story, args.output, preview=args.preview, silent=args.silent,
-                           voice_dir=args.voice_dir, music=args.music, still=args.still, provider=args.provider,
+                           voice_dir=args.voice_dir, local_voice=args.local_voice, music=args.music, still=args.still, provider=args.provider,
                            resolution=int(args.resolution), fast=args.fast, workers=args.workers,
                            topic_image_provider=args.topic_image, topic_image_model=args.topic_image_model,
                            require_image=args.type == "both"))
@@ -222,7 +256,8 @@ def main(argv=None):
                             story = plan(row["topic"], provider=provider, model=args.model,
                                          duration=int(args.duration))
                             video = generate(story, args.output, preview=args.preview,
-                                             silent=args.silent, voice_dir=args.voice_dir, music=args.music, provider=provider,
+                                             silent=args.silent, voice_dir=args.voice_dir, local_voice=args.local_voice,
+                                             music=args.music, provider=provider,
                                              fast=args.fast, workers=args.workers,
                                              topic_image_provider=args.topic_image,
                                              topic_image_model=args.topic_image_model)
